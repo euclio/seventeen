@@ -155,7 +155,9 @@ pub enum Notification {
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "method", content = "params")]
 pub enum EditMethod {
+    Insert { chars: String },
     Scroll(u16, u16),
+    DeleteBackward,
     MoveUp,
     MoveDown,
     MoveLeft,

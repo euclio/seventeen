@@ -15,10 +15,13 @@ mod editor;
 mod protocol;
 mod terminal;
 
+use protocol::Message;
+use termion::event::Key;
+
 pub use core::Core;
 pub use editor::Editor;
 
 pub enum Event {
-    Input(termion::event::Event),
-    CoreRpc(protocol::Message),
+    Input(Key),
+    CoreRpc(Message),
 }

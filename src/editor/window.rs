@@ -98,6 +98,7 @@ fn insert_cursor(line: &mut String, index: u64) {
     }
 }
 
+#[derive(Debug)]
 pub struct WindowMap {
     map: HashMap<ViewId, Window>,
     active_window: ViewId,

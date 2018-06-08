@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use futures::Future;
 use log::*;
-use termion::event::{Event as TEvent, Key};
+use termion::event::Key;
 use xdg::BaseDirectories;
 
 use core::Core;
@@ -15,22 +15,37 @@ mod window;
 
 use self::window::WindowMap;
 
+#[derive(Debug, PartialEq, Eq)]
+enum Mode {
+    Normal,
+    Insert,
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Mode::Normal
+    }
+}
+
 pub struct Editor<W> {
     core: Core,
     windows: WindowMap,
+    mode: Mode,
     screen: W,
 }
 
 impl<W: Write> Editor<W> {
     pub fn new<P: Into<PathBuf>>(mut core: Core, screen: W, initial_path: Option<P>) -> Self {
         let xdg_dirs = BaseDirectories::with_prefix("xi").unwrap();
-        core.client_started(Some(xdg_dirs.get_config_home())).unwrap();
+        core.client_started(Some(xdg_dirs.get_config_home()))
+            .unwrap();
         let view_id = core.new_view(initial_path).wait().unwrap();
         let windows = WindowMap::new(&mut core, view_id);
 
         Self {
             core,
             windows,
+            mode: Mode::Normal,
             screen,
         }
     }
@@ -75,27 +90,62 @@ impl<W: Write> Editor<W> {
         }
     }
 
+    fn handle_normal_key(&mut self, key: Key) {
+        match key {
+            Key::Char('h') => {
+                self.move_left();
+            }
+            Key::Char('i') => {
+                info!("entering insert mode");
+                self.mode = Mode::Insert;
+            }
+            Key::Char('j') => {
+                self.move_down();
+            }
+            Key::Char('k') => {
+                self.move_up();
+            }
+            Key::Char('l') => {
+                self.move_right();
+            }
+            _ => warn!("unhandled key: {:?}", key),
+        }
+    }
+
+    fn handle_insert_key(&mut self, key: Key) {
+        match key {
+            Key::Char(c) => {
+                self.core
+                    .insert(
+                        self.windows.get_active_window_mut().view_id.clone(),
+                        c.to_string(),
+                    )
+                    .unwrap();
+            }
+            Key::Backspace => {
+                self.core
+                    .delete_backward(self.windows.get_active_window_mut().view_id.clone())
+                    .unwrap();
+            }
+            Key::Esc => {
+                info!("entering normal mode");
+                self.mode = Mode::Normal;
+            }
+            _ => warn!("unhandled key: {:?}", key),
+        }
+    }
+
     pub fn run<E>(mut self, events: E)
     where
         E: IntoIterator<Item = Event>,
     {
         for event in events {
             match event {
-                Event::Input(TEvent::Key(Key::Char('h'))) => {
-                    self.move_left();
-                }
-                Event::Input(TEvent::Key(Key::Char('j'))) => {
-                    self.move_down();
-                }
-                Event::Input(TEvent::Key(Key::Char('k'))) => {
-                    self.move_up();
-                }
-                Event::Input(TEvent::Key(Key::Char('l'))) => {
-                    self.move_right();
-                }
-                Event::Input(TEvent::Key(Key::Char('q'))) => {
-                    break;
-                }
+                Event::Input(Key::Char('q')) if self.mode == Mode::Normal => break,
+                Event::Input(key) => match self.mode {
+                    Mode::Normal => self.handle_normal_key(key),
+                    Mode::Insert => self.handle_insert_key(key),
+                },
                 Event::CoreRpc(Message::Notification(not)) => match not {
                     Notification::Update { view_id, update } => self.update(view_id, update),
                     Notification::ScrollTo { view_id, line, col } => {
@@ -110,7 +160,6 @@ impl<W: Write> Editor<W> {
                 Event::CoreRpc(Message::Response { .. }) => {
                     unreachable!("responses are handled by the core")
                 }
-                _ => (),
             }
         }
     }

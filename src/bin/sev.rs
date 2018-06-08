@@ -20,7 +20,9 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use structopt::StructOpt;
-use termion::{input::TermRead, raw::IntoRawMode, screen::AlternateScreen};
+use termion::{
+    event::Event as TermionEvent, input::TermRead, raw::IntoRawMode, screen::AlternateScreen,
+};
 
 use seventeen::{Core, Editor, Event};
 
@@ -47,7 +49,12 @@ fn run(opt: Opt) -> Result<(), Box<Error>> {
         let tty = termion::get_tty()?;
 
         for event in tty.events() {
-            input_event_tx.send(Event::Input(event?)).unwrap();
+            match event? {
+                TermionEvent::Key(key) => input_event_tx.send(Event::Input(key)).unwrap(),
+                ev @ TermionEvent::Mouse(_) | ev @ TermionEvent::Unsupported(_) => {
+                    warn!("unsupported event encountered: {:?}", ev);
+                }
+            };
         }
 
         Ok(())

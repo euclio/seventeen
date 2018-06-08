@@ -102,6 +102,20 @@ impl Core {
         })
     }
 
+    pub fn insert(&mut self, view_id: ViewId, chars: String) -> io::Result<()> {
+        self.notify(&Notification::Edit {
+            method: EditMethod::Insert { chars },
+            view_id,
+        })
+    }
+
+    pub fn delete_backward(&mut self, view_id: ViewId) -> io::Result<()> {
+        self.notify(&Notification::Edit {
+            method: EditMethod::DeleteBackward,
+            view_id,
+        })
+    }
+
     pub fn move_right(&mut self, view_id: ViewId) -> io::Result<()> {
         self.notify(&Notification::Edit {
             method: EditMethod::MoveRight,
