@@ -31,6 +31,18 @@ impl LineCache {
         Self::default()
     }
 
+    /// True if a given terminal coordinate is at the end of a line in the cache.
+    pub fn is_eol(&self, coordinate: &Coordinate) -> bool {
+        let x = coordinate.x as usize - 1;
+        let y = coordinate.y as usize - 1;
+        self.lines
+            .iter()
+            .nth(y)
+            .and_then(|line| line.text.chars().nth(x))
+            .map(|c| c == '\n')
+            .unwrap_or_default()
+    }
+
     fn ins(&mut self, lines: Vec<protocol::Line>) {
         debug!("inserting {} lines", lines.len());
         self.lines.extend(lines.into_iter().map(|line| {
@@ -77,6 +89,30 @@ impl LineCache {
         }
     }
 
+    fn skip(&mut self, mut n: u64) {
+        debug!("skipping {} lines", n);
+
+        // TODO: Notice that this is basically the same as copy, but it discards the old lines.
+        if n > 0 && self.invalid_before > 0 {
+            let num_invalid = if self.invalid_before > n {
+                self.invalid_before -= n;
+                n
+            } else {
+                mem::replace(&mut self.invalid_before, 0)
+            };
+
+            n -= num_invalid;
+        }
+
+        if n > 0 && !self.lines.is_empty() {
+            if self.lines.len() as u64 > n {
+                self.lines.drain(..n as usize);
+            } else {
+                self.lines.drain(..);
+            }
+        }
+    }
+
     pub fn update(&mut self, update: Update) {
         // Semantically, this method simply replaces the old state of the cache with a new state.
         // Here we use a naive implementation to simply construct a new cache by applying the
@@ -92,6 +128,7 @@ impl LineCache {
                 OpKind::Ins => self.ins(op.lines.expect("attempted `ins` with no lines")),
                 OpKind::Invalidate => self.invalidate(op.n),
                 OpKind::Copy => self.copy(op.n, &mut old_cache),
+                OpKind::Skip => old_cache.skip(op.n),
                 _ => unimplemented!("unsupported op kind: {:?}", op),
             }
         }
@@ -121,6 +158,7 @@ impl LineCache {
 #[cfg(test)]
 mod tests {
     use protocol::{Line, Op, OpKind, Update};
+    use terminal::Coordinate;
 
     use super::LineCache;
 
@@ -243,4 +281,16 @@ mod tests {
     }
 
     // TODO: Write test for invalid after?
+
+    #[test]
+    fn is_eol() {
+        let mut cache = LineCache::new();
+        cache.lines = vec![super::Line {
+            text: String::from("Hello, world!\n"),
+            ..Default::default()
+        }];
+
+        assert!(cache.is_eol(&Coordinate { y: 1, x: 14 }));
+        assert!(!cache.is_eol(&Coordinate { y: 1, x: 10 }));
+    }
 }

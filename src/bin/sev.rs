@@ -54,9 +54,7 @@ fn run(opt: Opt) -> Result<(), Box<Error>> {
     });
 
     let core = Core::spawn(event_tx.clone())?;
-    let mut editor = Editor::new(core, screen);
-
-    editor.new_window(opt.file);
+    let editor = Editor::new(core, screen, opt.file);
 
     editor.run(event_rx);
 

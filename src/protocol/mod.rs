@@ -132,6 +132,10 @@ pub enum Notification {
 #[serde(tag = "method", content = "params")]
 pub enum EditMethod {
     Scroll(u16, u16),
+    MoveUp,
+    MoveDown,
+    MoveLeft,
+    MoveRight,
 }
 
 #[cfg(test)]
@@ -140,7 +144,7 @@ mod tests {
 
     use serde_json::{self, json, json_internal};
 
-    use super::{EditMethod, Message, Notification, Request, Response, ViewId};
+    use super::*;
 
     #[test]
     fn client_started() {

@@ -1,7 +1,14 @@
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::io;
+use std::ops::{Index, IndexMut};
 
-use termion::{clear, cursor, style};
+use log::*;
+use termion::{self, clear, cursor, style};
+
+use protocol::ViewId;
+use terminal::Coordinate;
+use Core;
 
 use super::line_cache::LineCache;
 
@@ -10,6 +17,8 @@ pub struct Window {
     pub line_cache: LineCache,
     pub rows: u16,
     pub cols: u16,
+    pub cursor: Coordinate,
+    pub view_id: ViewId,
 }
 
 impl Window {
@@ -78,13 +87,69 @@ fn insert_cursor(line: &mut String, index: u64) {
     }
 
     let index = index as usize;
-    let c = line.chars().nth(index).unwrap();
+    if let Some(c) = line.chars().nth(index) {
+        // FIXME: The range here might not work for multibyte characters. Write a test.
+        line.replace_range(
+            index..index + 1,
+            &format!("{}{}{}", style::Invert, c, style::NoInvert),
+        );
+    } else {
+        line.push_str(&format!("{} {}", style::Invert, style::NoInvert));
+    }
+}
 
-    // FIXME: The range here might not work for multibyte characters. Write a test.
-    line.replace_range(
-        index..index + 1,
-        &format!("{}{}{}", style::Invert, c, style::NoInvert),
-    );
+pub struct WindowMap {
+    map: HashMap<ViewId, Window>,
+    active_window: ViewId,
+}
+
+impl WindowMap {
+    pub fn new(core: &mut Core, active_view_id: ViewId) -> Self {
+        let (cols, rows) = termion::terminal_size().unwrap();
+        let window = Window {
+            cursor: Coordinate { x: 1, y: 1 },
+            rows,
+            cols,
+            line_cache: LineCache::new(),
+            view_id: active_view_id.clone(),
+        };
+        info!(
+            "creating window at {:?}: width={} height={}",
+            (1, 1),
+            cols,
+            rows
+        );
+
+        // Rows are one-based, but `scroll` takes the first and last lines non-inclusively, so we
+        // don't have to subtract 1.
+        core.scroll(active_view_id.clone(), (0, rows)).unwrap();
+
+        let mut window_map = HashMap::new();
+        window_map.insert(active_view_id.clone(), window);
+
+        Self {
+            map: window_map,
+            active_window: active_view_id,
+        }
+    }
+
+    pub fn get_active_window_mut(&mut self) -> &mut Window {
+        self.map.get_mut(&self.active_window).unwrap()
+    }
+}
+
+impl<'a> Index<&'a ViewId> for WindowMap {
+    type Output = Window;
+
+    fn index(&self, index: &'a ViewId) -> &Window {
+        self.map.get(index).unwrap()
+    }
+}
+
+impl<'a> IndexMut<&'a ViewId> for WindowMap {
+    fn index_mut(&mut self, index: &'a ViewId) -> &mut Window {
+        self.map.get_mut(index).unwrap()
+    }
 }
 
 #[cfg(test)]
@@ -106,6 +171,13 @@ mod tests {
         assert_eq!(
             line,
             format!("Hello, {}w{}orld!", style::Invert, style::NoInvert),
+        );
+
+        let mut line = String::from("Goodbye, world!");
+        super::insert_cursor(&mut line, 15);
+        assert_eq!(
+            line,
+            format!("Goodbye, world!{} {}", style::Invert, style::NoInvert),
         );
     }
 }

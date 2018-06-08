@@ -11,7 +11,7 @@ use futures::{self, Complete, Future};
 use log::*;
 use serde_json::{self, Value};
 
-use protocol::{EditMethod, Message, Notification, Request, Response, ViewId};
+use protocol::*;
 use Event;
 
 #[derive(Debug, Fail)]
@@ -98,6 +98,34 @@ impl Core {
     pub fn scroll(&mut self, view_id: ViewId, (first, last): (u16, u16)) -> io::Result<()> {
         self.notify(&Notification::Edit {
             method: EditMethod::Scroll(first, last),
+            view_id,
+        })
+    }
+
+    pub fn move_right(&mut self, view_id: ViewId) -> io::Result<()> {
+        self.notify(&Notification::Edit {
+            method: EditMethod::MoveRight,
+            view_id,
+        })
+    }
+
+    pub fn move_left(&mut self, view_id: ViewId) -> io::Result<()> {
+        self.notify(&Notification::Edit {
+            method: EditMethod::MoveLeft,
+            view_id,
+        })
+    }
+
+    pub fn move_up(&mut self, view_id: ViewId) -> io::Result<()> {
+        self.notify(&Notification::Edit {
+            method: EditMethod::MoveUp,
+            view_id,
+        })
+    }
+
+    pub fn move_down(&mut self, view_id: ViewId) -> io::Result<()> {
+        self.notify(&Notification::Edit {
+            method: EditMethod::MoveDown,
             view_id,
         })
     }
