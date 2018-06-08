@@ -88,9 +88,9 @@ impl Core {
         })
     }
 
-    pub fn client_started(&mut self) -> io::Result<()> {
+    pub fn client_started<P: Into<PathBuf>>(&mut self, config_dir: Option<P>) -> io::Result<()> {
         self.notify(&Notification::ClientStarted {
-            config_dir: None,
+            config_dir: config_dir.map(Into::into),
             client_extras_dir: None,
         })
     }

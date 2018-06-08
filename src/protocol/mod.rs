@@ -114,9 +114,33 @@ pub enum Notification {
     },
 
     // Backend -> Frontend
+    DefStyle {
+        id: u64,
+        fg_color: Option<u32>,
+        bg_color: Option<u32>,
+        underline: Option<bool>,
+        italic: Option<bool>,
+    },
+
+    // Backend -> Frontend
+    PluginStarted {
+        view_id: ViewId,
+        plugin: String,
+    },
+
+    // Backend -> Frontend
     Update {
         view_id: ViewId,
         update: Update,
+    },
+
+    // Backend -> Frontend
+    UpdateCmds {
+        view_id: ViewId,
+        plugin: String,
+
+        // FIXME: The format for describing a command is in flux.
+        cmds: Vec<Value>,
     },
 
     // Backend -> Frontend

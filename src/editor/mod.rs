@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use futures::Future;
 use log::*;
 use termion::event::{Event as TEvent, Key};
+use xdg::BaseDirectories;
 
 use core::Core;
 use protocol::{Message, Notification, Update, ViewId};
@@ -22,7 +23,8 @@ pub struct Editor<W> {
 
 impl<W: Write> Editor<W> {
     pub fn new<P: Into<PathBuf>>(mut core: Core, screen: W, initial_path: Option<P>) -> Self {
-        core.client_started().unwrap();
+        let xdg_dirs = BaseDirectories::with_prefix("xi").unwrap();
+        core.client_started(Some(xdg_dirs.get_config_home())).unwrap();
         let view_id = core.new_view(initial_path).wait().unwrap();
         let windows = WindowMap::new(&mut core, view_id);
 
