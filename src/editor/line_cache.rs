@@ -43,6 +43,17 @@ impl LineCache {
             .unwrap_or_default()
     }
 
+    /// Returns the text of last line in the cache, if present.
+    ///
+    /// Returns `None` if the cache is empty or there are invalid lines at the end of the cache.
+    pub fn last_line(&self) -> Option<&str> {
+        if self.invalid_after == 0 {
+            self.lines.last().map(|line| line.text.as_str())
+        } else {
+            None
+        }
+    }
+
     fn ins(&mut self, lines: Vec<protocol::Line>) {
         debug!("inserting {} lines", lines.len());
         self.lines.extend(lines.into_iter().map(|line| {

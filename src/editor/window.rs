@@ -59,13 +59,23 @@ impl Window {
             ).unwrap();
         }
 
-        // If there are more rows in the window than lines, then fill them out with tildes.
-        for i in (self.line_cache.len() as u16)..=self.rows {
+        // If there are more rows in the window than lines in the cache, then fill out the
+        // remaining rows with tildes.
+        let starting_line_no = self.line_cache.len() as u16 + 1;
+
+        // FIXME: Don't display the trailing newline here.
+        //
+        // To do this, we need to distinguish between the file having a trailing newline and a file
+        // having its last line being written. It'd be nice to use the cursor for this, but the
+        // cursor doesn't actually get its correct position until the `scroll_to` notification gets
+        // sent later.
+
+        for line_no in starting_line_no..=self.rows {
             write!(
                 sequences,
                 "{}{}~",
-                cursor::Goto(1, i as u16),
-                clear::CurrentLine
+                cursor::Goto(1, line_no),
+                clear::CurrentLine,
             ).unwrap();
         }
 
