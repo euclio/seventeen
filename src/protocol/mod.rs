@@ -123,6 +123,12 @@ pub enum Notification {
     },
 
     // Backend -> Frontend
+    FindStatus {
+        view_id: ViewId,
+        queries: Vec<Value>,
+    },
+
+    // Backend -> Frontend
     PluginStarted {
         view_id: ViewId,
         plugin: String,
