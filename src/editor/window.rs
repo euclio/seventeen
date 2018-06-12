@@ -1,13 +1,12 @@
 use std::collections::HashMap;
-use std::fmt::Write;
 use std::io;
 use std::ops::{Index, IndexMut};
 
 use log::*;
-use termion::{self, clear, cursor, style};
+use termion;
 
 use protocol::ViewId;
-use terminal::Coordinate;
+use screen::{Coordinate, Screen};
 use Core;
 
 use super::line_cache::LineCache;
@@ -22,13 +21,8 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn render<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        let mut sequences = String::new();
-
-        let mut cursors = self.line_cache.iter_cursors().collect::<Vec<_>>();
-
-        // Sort cursors so that we can iterate through them top to bottom, left to right
-        cursors.sort_by_key(|cursor| (cursor.y, cursor.x));
+    pub fn render(&self, screen: &mut Screen) -> io::Result<()> {
+        screen.erase();
 
         for (i, line) in self
             .line_cache
@@ -36,32 +30,20 @@ impl Window {
             .enumerate()
             .take(self.rows as usize)
         {
-            let line_no = (i + 1) as u16;
+            // There might be a newline at the end of the current line, but the terminal already
+            // operates linewise.
+            let line = line.trim_right_matches('\n');
+            screen.write_str((i as u16, 0).into(), line);
+        }
 
-            // There might be a newline at the end of the current line, but we're already iterating
-            // linewise.
-            let mut line = String::from(line.trim_right_matches('\n'));
-
-            // Add any cursors or styles to the current line. We have to add them in reverse order
-            // so we don't invalidate the indices.
-            for cursor in cursors.iter().rev() {
-                if cursor.y == line_no {
-                    insert_cursor(&mut line, u64::from(cursor.x - 1));
-                }
-            }
-
-            write!(
-                sequences,
-                "{}{}{}",
-                cursor::Goto(1, line_no),
-                clear::CurrentLine,
-                line
-            ).unwrap();
+        // Add any cursors or styles to the current line.
+        for cursor in self.line_cache.iter_cursors() {
+            screen.draw_cursor(cursor);
         }
 
         // If there are more rows in the window than lines in the cache, then fill out the
         // remaining rows with tildes.
-        let starting_line_no = self.line_cache.len() as u16 + 1;
+        let starting_line_no = self.line_cache.len() as u16;
 
         // FIXME: Don't display the trailing newline here.
         //
@@ -70,41 +52,11 @@ impl Window {
         // cursor doesn't actually get its correct position until the `scroll_to` notification gets
         // sent later.
 
-        for line_no in starting_line_no..=self.rows {
-            write!(
-                sequences,
-                "{}{}~",
-                cursor::Goto(1, line_no),
-                clear::CurrentLine,
-            ).unwrap();
+        for line_no in starting_line_no..self.rows {
+            screen.write_str((line_no, 0).into(), "~");
         }
 
-        write!(writer, "{}", sequences)?;
-        writer.flush()?;
-
         Ok(())
-    }
-}
-
-/// Draws a "cursor" at the given byte index in the line.
-///
-/// Since a terminal can only support a single cursor at a time, we simulate multiple cursors by
-/// drawing a reverse highlight wherever we need a cursor.
-fn insert_cursor(line: &mut String, index: u64) {
-    // Event if the line is empty, we still need to have a character on the line to highlight.
-    if line.is_empty() {
-        *line = String::from(" ");
-    }
-
-    let index = index as usize;
-    if let Some(c) = line.chars().nth(index) {
-        // FIXME: The range here might not work for multibyte characters. Write a test.
-        line.replace_range(
-            index..index + 1,
-            &format!("{}{}{}", style::Invert, c, style::NoInvert),
-        );
-    } else {
-        line.push_str(&format!("{} {}", style::Invert, style::NoInvert));
     }
 }
 
@@ -118,7 +70,7 @@ impl WindowMap {
     pub fn new(core: &mut Core, active_view_id: ViewId) -> Self {
         let (cols, rows) = termion::terminal_size().unwrap();
         let window = Window {
-            cursor: Coordinate { x: 1, y: 1 },
+            cursor: (0, 0).into(),
             rows,
             cols,
             line_cache: LineCache::new(),
@@ -160,35 +112,5 @@ impl<'a> Index<&'a ViewId> for WindowMap {
 impl<'a> IndexMut<&'a ViewId> for WindowMap {
     fn index_mut(&mut self, index: &'a ViewId) -> &mut Window {
         self.map.get_mut(index).unwrap()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use termion::style;
-
-    #[test]
-    fn insert_cursor() {
-        let mut line = String::from("");
-        super::insert_cursor(&mut line, 0);
-        assert_eq!(line, format!("{} {}", style::Invert, style::NoInvert));
-
-        let mut line = String::from("test");
-        super::insert_cursor(&mut line, 0);
-        assert_eq!(line, format!("{}t{}est", style::Invert, style::NoInvert));
-
-        let mut line = String::from("Hello, world!");
-        super::insert_cursor(&mut line, 7);
-        assert_eq!(
-            line,
-            format!("Hello, {}w{}orld!", style::Invert, style::NoInvert),
-        );
-
-        let mut line = String::from("Goodbye, world!");
-        super::insert_cursor(&mut line, 15);
-        assert_eq!(
-            line,
-            format!("Goodbye, world!{} {}", style::Invert, style::NoInvert),
-        );
     }
 }

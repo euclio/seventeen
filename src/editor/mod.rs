@@ -1,4 +1,3 @@
-use std::io::Write;
 use std::path::PathBuf;
 
 use futures::Future;
@@ -8,6 +7,7 @@ use xdg::BaseDirectories;
 
 use core::Core;
 use protocol::{Message, Notification, Update, ViewId};
+use screen::{Coordinate, Screen};
 use Event;
 
 mod line_cache;
@@ -27,15 +27,15 @@ impl Default for Mode {
     }
 }
 
-pub struct Editor<W> {
+pub struct Editor {
     core: Core,
     windows: WindowMap,
     mode: Mode,
-    screen: W,
+    screen: Screen,
 }
 
-impl<W: Write> Editor<W> {
-    pub fn new<P: Into<PathBuf>>(mut core: Core, screen: W, initial_path: Option<P>) -> Self {
+impl Editor {
+    pub fn new<P: Into<PathBuf>>(mut core: Core, initial_path: Option<P>) -> Self {
         let xdg_dirs = BaseDirectories::with_prefix("xi").unwrap();
         core.client_started(Some(xdg_dirs.get_config_home()))
             .unwrap();
@@ -46,7 +46,7 @@ impl<W: Write> Editor<W> {
             core,
             windows,
             mode: Mode::Normal,
-            screen,
+            screen: Screen::new().unwrap(),
         }
     }
 
@@ -55,14 +55,16 @@ impl<W: Write> Editor<W> {
 
         window.line_cache.update(update);
         window.render(&mut self.screen).unwrap();
-        self.screen.flush().unwrap();
+        self.screen.refresh().unwrap();
     }
 
     fn scroll_to(&mut self, view_id: ViewId, line: u64, col: u64) {
         let active_window = self.windows.get_active_window_mut();
         debug_assert!(view_id == active_window.view_id);
-        active_window.cursor.x = col as u16 + 1;
-        active_window.cursor.y = line as u16 + 1;
+        active_window.cursor = Coordinate {
+            y: line as u16,
+            x: col as u16,
+        };
         debug!("scrolled cursor to {:?}", active_window.cursor);
     }
 
@@ -78,7 +80,7 @@ impl<W: Write> Editor<W> {
 
     fn move_left(&mut self) {
         let active_window = self.windows.get_active_window_mut();
-        if active_window.cursor.x != 1 {
+        if let Coordinate { x: 0, .. } = active_window.cursor {
             self.core.move_left(active_window.view_id.clone()).unwrap();
         }
     }

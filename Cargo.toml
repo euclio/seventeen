@@ -4,6 +4,7 @@ name = "seventeen"
 version = "0.1.0"
 
 [dependencies]
+bitflags = "1"
 failure = "0.1"
 futures = "0.1"
 log = "0.4"
@@ -15,3 +16,4 @@ serde_json = "1"
 structopt = "0.2"
 termion = "1"
 xdg = "2"
+ndarray = "0.11.2"

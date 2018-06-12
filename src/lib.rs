@@ -4,6 +4,7 @@
 extern crate failure;
 extern crate futures;
 extern crate log;
+extern crate ndarray;
 extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
@@ -13,7 +14,7 @@ extern crate xdg;
 mod core;
 mod editor;
 mod protocol;
-mod terminal;
+mod screen;
 
 use protocol::Message;
 use termion::event::Key;

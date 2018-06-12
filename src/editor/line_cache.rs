@@ -3,7 +3,7 @@ use std::mem;
 use log::*;
 
 use protocol::{self, OpKind, Update};
-use terminal::Coordinate;
+use screen::Coordinate;
 
 #[derive(Debug, Clone, Default)]
 pub struct LineCache {
@@ -33,25 +33,12 @@ impl LineCache {
 
     /// True if a given terminal coordinate is at the end of a line in the cache.
     pub fn is_eol(&self, coordinate: &Coordinate) -> bool {
-        let x = coordinate.x as usize - 1;
-        let y = coordinate.y as usize - 1;
         self.lines
             .iter()
-            .nth(y)
-            .and_then(|line| line.text.chars().nth(x))
+            .nth(usize::from(coordinate.y))
+            .and_then(|line| line.text.chars().nth(usize::from(coordinate.x)))
             .map(|c| c == '\n')
             .unwrap_or_default()
-    }
-
-    /// Returns the text of last line in the cache, if present.
-    ///
-    /// Returns `None` if the cache is empty or there are invalid lines at the end of the cache.
-    pub fn last_line(&self) -> Option<&str> {
-        if self.invalid_after == 0 {
-            self.lines.last().map(|line| line.text.as_str())
-        } else {
-            None
-        }
     }
 
     fn ins(&mut self, lines: Vec<protocol::Line>) {
@@ -158,8 +145,8 @@ impl LineCache {
         self.lines.iter().enumerate().flat_map(|(line_no, line)| {
             line.cursors.iter().flat_map(move |cursors| {
                 cursors.iter().map(move |idx| Coordinate {
-                    x: *idx as u16 + 1,
-                    y: line_no as u16 + 1,
+                    x: *idx as u16,
+                    y: line_no as u16,
                 })
             })
         })
@@ -169,7 +156,7 @@ impl LineCache {
 #[cfg(test)]
 mod tests {
     use protocol::{Line, Op, OpKind, Update};
-    use terminal::Coordinate;
+    use screen::Coordinate;
 
     use super::LineCache;
 
@@ -301,7 +288,7 @@ mod tests {
             ..Default::default()
         }];
 
-        assert!(cache.is_eol(&Coordinate { y: 1, x: 14 }));
-        assert!(!cache.is_eol(&Coordinate { y: 1, x: 10 }));
+        assert!(cache.is_eol(&Coordinate { y: 0, x: 13 }));
+        assert!(!cache.is_eol(&Coordinate { y: 0, x: 10 }));
     }
 }

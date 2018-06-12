@@ -20,9 +20,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use structopt::StructOpt;
-use termion::{
-    event::Event as TermionEvent, input::TermRead, raw::IntoRawMode, screen::AlternateScreen,
-};
+use termion::{cursor, event::Event as TermionEvent, input::TermRead};
 
 use seventeen::{Core, Editor, Event};
 
@@ -38,10 +36,6 @@ struct Opt {
 }
 
 fn run(opt: Opt) -> Result<(), Box<Error>> {
-    let mut screen = AlternateScreen::from(io::stdout().into_raw_mode()?);
-    write!(screen, "{}{}", termion::cursor::Hide, termion::clear::All)?;
-    screen.flush()?;
-
     let (event_tx, event_rx) = mpsc::channel::<Event>();
 
     let input_event_tx = event_tx.clone();
@@ -61,12 +55,12 @@ fn run(opt: Opt) -> Result<(), Box<Error>> {
     });
 
     let core = Core::spawn(event_tx.clone())?;
-    let editor = Editor::new(core, screen, opt.file);
+    let editor = Editor::new(core, opt.file);
 
     editor.run(event_rx);
 
     // We hid the cursor earlier, so we have to restore it before we exit.
-    print!("{}", termion::cursor::Show);
+    print!("{}", cursor::Show);
     io::stdout().flush()?;
 
     Ok(())
