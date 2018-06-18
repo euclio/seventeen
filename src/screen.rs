@@ -3,7 +3,16 @@ use std::io::{self, Write};
 
 use log::*;
 use ndarray::prelude::*;
-use termion::{self, clear, cursor, raw::IntoRawMode, screen::AlternateScreen, style};
+use termion::{
+    self, clear,
+    color::{Bg, Fg, Rgb},
+    cursor,
+    raw::IntoRawMode,
+    screen::AlternateScreen,
+    style,
+};
+
+use protocol::Color;
 
 type Buffer = Array2<Cell>;
 
@@ -30,6 +39,9 @@ pub struct Screen {
     /// A buffer containing what should be displayed on the screen at the next refresh.
     buf: Buffer,
 
+    /// Foreground and background color for text.
+    text_color: (Option<Color>, Option<Color>),
+
     out: Box<Write>,
 }
 
@@ -50,7 +62,11 @@ impl Screen {
     {
         let out = Box::new(write);
         let buf = Buffer::from_elem((height, width), Cell::default());
-        Ok(Self { buf, out })
+        Ok(Self {
+            buf,
+            out,
+            text_color: (None, None),
+        })
     }
 
     pub fn write_str(&mut self, Coordinate { y, x }: Coordinate, s: &str) {
@@ -62,6 +78,10 @@ impl Screen {
                 is_reverse: false,
             };
         }
+    }
+
+    pub fn set_text_color(&mut self, fg: Option<Color>, bg: Option<Color>) {
+        self.text_color = (fg, bg);
     }
 
     pub fn draw_cursor(&mut self, Coordinate { y, x }: Coordinate) {
@@ -78,6 +98,14 @@ impl Screen {
         debug!("refreshing screen contents");
 
         let mut sequences = String::new();
+
+        if let Some(fg) = &self.text_color.0 {
+            write!(sequences, "{}", Fg(Rgb(fg.r, fg.g, fg.b))).unwrap();
+        }
+
+        if let Some(bg) = &self.text_color.1 {
+            write!(sequences, "{}", Bg(Rgb(bg.r, bg.g, bg.b))).unwrap();
+        }
 
         // enumerate() doesn't seem to work here?
         let mut i = 1;

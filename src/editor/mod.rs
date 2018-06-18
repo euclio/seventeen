@@ -6,7 +6,7 @@ use termion::event::Key;
 use xdg::BaseDirectories;
 
 use core::Core;
-use protocol::{Notification, Update, ViewId};
+use protocol::{Notification, ThemeSettings, Update, ViewId};
 use screen::{Coordinate, Screen};
 use Event;
 
@@ -66,6 +66,12 @@ impl Editor {
             x: col as u16,
         };
         debug!("scrolled cursor to {:?}", active_window.cursor);
+    }
+
+    fn theme_changed(&mut self, name: String, theme: ThemeSettings) {
+        info!("theme changed to {}", name);
+        self.screen
+            .set_text_color(theme.foreground, theme.background);
     }
 
     fn move_up(&mut self) {
@@ -153,6 +159,7 @@ impl Editor {
                     Notification::ScrollTo { view_id, line, col } => {
                         self.scroll_to(view_id, line, col)
                     }
+                    Notification::ThemeChanged { name, theme } => self.theme_changed(name, theme),
                     _ => error!("unhandled notification: {:?}", not),
                 },
             }

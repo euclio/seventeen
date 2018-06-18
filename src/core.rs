@@ -150,6 +150,12 @@ impl Core {
         })
     }
 
+    pub fn set_theme(&mut self, theme: &str) -> io::Result<()> {
+        self.notify(&Notification::SetTheme {
+            theme_name: String::from(theme),
+        })
+    }
+
     pub fn new_view<P: Into<PathBuf>>(
         &mut self,
         file_path: Option<P>,

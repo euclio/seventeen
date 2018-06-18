@@ -16,7 +16,8 @@ use std::thread;
 
 use log::*;
 use log4rs::{
-    append::file::FileAppender, config::{Appender, Config, Logger, Root},
+    append::file::FileAppender,
+    config::{Appender, Config, Logger, Root},
     encode::pattern::PatternEncoder,
 };
 use structopt::StructOpt;

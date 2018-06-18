@@ -96,6 +96,11 @@ pub enum Notification {
         view_id: ViewId,
     },
 
+    // Frontend -> Backend
+    SetTheme {
+        theme_name: String,
+    },
+
     // Backend -> Frontend
     AvailableThemes {
         themes: Vec<String>,
@@ -155,6 +160,12 @@ pub enum Notification {
         line: u64,
         col: u64,
     },
+
+    // Backend -> Frontend
+    ThemeChanged {
+        name: String,
+        theme: ThemeSettings,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -168,6 +179,19 @@ pub enum EditMethod {
     MoveDown,
     MoveLeft,
     MoveRight,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ThemeSettings {
+    pub foreground: Option<Color>,
+    pub background: Option<Color>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Color {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
 }
 
 #[cfg(test)]
