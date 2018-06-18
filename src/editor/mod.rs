@@ -6,7 +6,7 @@ use termion::event::Key;
 use xdg::BaseDirectories;
 
 use core::Core;
-use protocol::{Message, Notification, Update, ViewId};
+use protocol::{Notification, Update, ViewId};
 use screen::{Coordinate, Screen};
 use Event;
 
@@ -148,20 +148,13 @@ impl Editor {
                     Mode::Normal => self.handle_normal_key(key),
                     Mode::Insert => self.handle_insert_key(key),
                 },
-                Event::CoreRpc(Message::Notification(not)) => match not {
+                Event::CoreNotification(not) => match not {
                     Notification::Update { view_id, update } => self.update(view_id, update),
                     Notification::ScrollTo { view_id, line, col } => {
                         self.scroll_to(view_id, line, col)
                     }
                     _ => error!("unhandled notification: {:?}", not),
                 },
-                Event::CoreRpc(Message::Request { id, req }) => unreachable!(
-                    "xi-core is not known to send RPC requests, but got a request ({:?}, {:?})",
-                    id, req
-                ),
-                Event::CoreRpc(Message::Response { .. }) => {
-                    unreachable!("responses are handled by the core")
-                }
             }
         }
     }

@@ -53,8 +53,14 @@ impl Core {
                 trace!("<- {}", line);
                 let message = serde_json::from_str(&line).unwrap();
                 match message {
-                    Message::Notification(_) | Message::Request { .. } => {
-                        event_tx.send(Event::CoreRpc(message)).unwrap();
+                    Message::Notification(not) => {
+                        event_tx.send(Event::CoreNotification(not)).unwrap()
+                    }
+                    Message::Request { id, req } => {
+                        error!(
+                            "xi-core is not known to send requests, but got request ({:?}, {:?})",
+                            id, req
+                        );
                     }
                     Message::Response { id, res } => {
                         let completer = response_map

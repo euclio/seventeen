@@ -16,7 +16,6 @@ mod editor;
 mod protocol;
 mod screen;
 
-use protocol::Message;
 use termion::event::Key;
 
 pub use core::Core;
@@ -24,5 +23,5 @@ pub use editor::Editor;
 
 pub enum Event {
     Input(Key),
-    CoreRpc(Message),
+    CoreNotification(protocol::Notification),
 }
