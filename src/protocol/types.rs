@@ -12,6 +12,7 @@ pub struct Plugin {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConfigChanges {
     tab_size: u16,
+    pub theme: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
