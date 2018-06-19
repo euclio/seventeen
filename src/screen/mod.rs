@@ -12,9 +12,22 @@ use termion::{
     style,
 };
 
-use protocol::Color;
+mod color;
+
+pub use self::color::Color;
+
+/// The number of style IDs that are reserved by the backend.
+const RESERVED_STYLES: usize = 2;
 
 type Buffer = Array2<Cell>;
+
+#[derive(Debug, Default, Clone)]
+pub struct Style {
+    pub fg: Option<Color>,
+    pub bg: Option<Color>,
+    pub underline: bool,
+    pub italic: bool,
+}
 
 /// A position in the terminal, zero-indexed.
 #[derive(Debug, Clone, Copy)]
@@ -38,6 +51,9 @@ impl From<(u16, u16)> for Coordinate {
 pub struct Screen {
     /// A buffer containing what should be displayed on the screen at the next refresh.
     buf: Buffer,
+
+    /// Styles defined by the backend.
+    styles: Vec<Style>,
 
     /// Foreground and background color for text.
     text_color: (Option<Color>, Option<Color>),
@@ -65,8 +81,34 @@ impl Screen {
         Ok(Self {
             buf,
             out,
+            styles: vec![Style::default(); RESERVED_STYLES],
             text_color: (None, None),
         })
+    }
+
+    pub fn define_style(&mut self, id: u64, style: Style) {
+        info!(
+            "defined style {}: fg={} bg={} underline={} italic={}",
+            id,
+            style
+                .fg
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| String::from("none")),
+            style
+                .bg
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| String::from("none")),
+            style.underline,
+            style.italic,
+        );
+
+        if id == self.styles.len() as u64 {
+            self.styles.push(style);
+        } else {
+            self.styles[id as usize] = style;
+        }
     }
 
     pub fn write_str(&mut self, Coordinate { y, x }: Coordinate, s: &str) {

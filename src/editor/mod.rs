@@ -7,7 +7,7 @@ use xdg::BaseDirectories;
 
 use core::Core;
 use protocol::{ConfigChanges, Notification, ThemeSettings, Update, ViewId};
-use screen::{Coordinate, Screen};
+use screen::{Color, Coordinate, Screen, Style};
 use Event;
 
 mod line_cache;
@@ -74,8 +74,10 @@ impl Editor {
 
     fn theme_changed(&mut self, name: String, theme: ThemeSettings) {
         info!("theme changed to {}", name);
-        self.screen
-            .set_text_color(theme.foreground, theme.background);
+        self.screen.set_text_color(
+            theme.foreground.map(Into::into),
+            theme.background.map(Into::into),
+        );
     }
 
     fn move_up(&mut self) {
@@ -166,6 +168,23 @@ impl Editor {
                 },
                 Event::CoreNotification(not) => match not {
                     Notification::Update { view_id, update } => self.update(view_id, update),
+                    Notification::DefStyle {
+                        id,
+                        fg_color,
+                        bg_color,
+                        underline,
+                        italic,
+                    } => {
+                        self.screen.define_style(
+                            id,
+                            Style {
+                                fg: fg_color.map(Color::from_argb),
+                                bg: bg_color.map(Color::from_argb),
+                                underline: underline.unwrap_or_default(),
+                                italic: italic.unwrap_or_default(),
+                            },
+                        );
+                    }
                     Notification::ScrollTo { view_id, line, col } => {
                         self.scroll_to(view_id, line, col)
                     }
@@ -174,6 +193,9 @@ impl Editor {
                         self.config_changed(changes);
                     }
                     Notification::ThemeChanged { name, theme } => self.theme_changed(name, theme),
+                    Notification::PluginStarted { view_id, plugin } => {
+                        info!("{} started on {:?}", plugin, view_id);
+                    }
                     _ => error!("unhandled notification: {:?}", not),
                 },
             }
