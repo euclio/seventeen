@@ -34,6 +34,13 @@ struct Opt {
     /// Write log messages to this file
     #[structopt(long = "log-file", parse(from_os_str), default_value = "/tmp/seventeen.log")]
     log_file: PathBuf,
+
+    /// Log output verbosity
+    ///
+    /// By default, only errors are logged. Each occurrence of this flag raises the log level: `-v`
+    /// for warnings, `-vv` for info, `-vvv` for debug, and `-vvvv` for trace.
+    #[structopt(short = "v", parse(from_occurrences))]
+    verbosity: u8,
 }
 
 fn run(opt: Opt) -> Result<(), Box<Error>> {
@@ -72,11 +79,17 @@ fn init_logging(opt: &Opt) -> Result<(), Box<Error>> {
         .encoder(Box::new(PatternEncoder::new("{l} {M} - {m}\n")))
         .build(&opt.log_file)?;
 
+    let verbosity = match opt.verbosity {
+        0 => LevelFilter::Error,
+        1 => LevelFilter::Warn,
+        2 => LevelFilter::Info,
+        3 => LevelFilter::Debug,
+        _ => LevelFilter::Trace,
+    };
+
     let config = Config::builder()
         .appender(Appender::builder().build("file", Box::new(file_appender)))
-        .logger(
-            Logger::builder().build(env!("CARGO_PKG_NAME").replace('-', "_"), LevelFilter::Trace),
-        )
+        .logger(Logger::builder().build(env!("CARGO_PKG_NAME").replace('-', "_"), verbosity))
         .build(Root::builder().appender("file").build(LevelFilter::Warn))?;
 
     log4rs::init_config(config)?;

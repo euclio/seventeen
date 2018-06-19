@@ -36,6 +36,8 @@ pub struct Core {
 
 impl Core {
     pub fn spawn(event_tx: Sender<Event>) -> io::Result<Self> {
+        info!("spawning core");
+
         let mut core = Command::new("xi-core")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
