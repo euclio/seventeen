@@ -172,6 +172,7 @@ impl Editor {
                         id,
                         fg_color,
                         bg_color,
+                        weight,
                         underline,
                         italic,
                     } => {
@@ -180,6 +181,7 @@ impl Editor {
                             Style {
                                 fg: fg_color.map(Color::from_argb),
                                 bg: bg_color.map(Color::from_argb),
+                                bold: weight.map(|weight| weight >= 700).unwrap_or_default(),
                                 underline: underline.unwrap_or_default(),
                                 italic: italic.unwrap_or_default(),
                             },

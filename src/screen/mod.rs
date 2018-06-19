@@ -5,7 +5,7 @@ use log::*;
 use ndarray::prelude::*;
 use termion::{
     self, clear,
-    color::{Bg, Fg, Rgb},
+    color::{Bg, Fg, Reset, Rgb},
     cursor,
     raw::IntoRawMode,
     screen::AlternateScreen,
@@ -25,8 +25,22 @@ type Buffer = Array2<Cell>;
 pub struct Style {
     pub fg: Option<Color>,
     pub bg: Option<Color>,
+    pub bold: bool,
     pub underline: bool,
     pub italic: bool,
+}
+
+impl Style {
+    /// Returns a string containing the appropriate escape sequences to enable the style.
+    fn enable_sequences(&self) -> String {
+        let mut sequences = String::new();
+
+        if let Some(fg) = &self.fg {
+            write!(sequences, "{}", Fg(Rgb(fg.r, fg.g, fg.b))).unwrap();
+        }
+
+        sequences
+    }
 }
 
 /// A position in the terminal, zero-indexed.
@@ -88,7 +102,7 @@ impl Screen {
 
     pub fn define_style(&mut self, id: u64, style: Style) {
         info!(
-            "defined style {}: fg={} bg={} underline={} italic={}",
+            "defined style {}: fg={} bg={} bold={} underline={} italic={}",
             id,
             style
                 .fg
@@ -100,6 +114,7 @@ impl Screen {
                 .as_ref()
                 .map(ToString::to_string)
                 .unwrap_or_else(|| String::from("none")),
+            style.bold,
             style.underline,
             style.italic,
         );
@@ -111,13 +126,19 @@ impl Screen {
         }
     }
 
+    pub fn apply_style(&mut self, id: u64, Coordinate { y, x }: Coordinate, n: usize) {
+        let mut row = self.buf.row_mut(usize::from(y));
+        row[usize::from(x)].span_start = Some(id);
+        row[(u64::from(x) + n as u64) as usize].span_end = Some(id);
+    }
+
     pub fn write_str(&mut self, Coordinate { y, x }: Coordinate, s: &str) {
         let mut row = self.buf.row_mut(usize::from(y));
 
         for (i, c) in s.chars().enumerate() {
             row[usize::from(x) + i] = Cell {
                 c,
-                is_reverse: false,
+                ..Default::default()
             };
         }
     }
@@ -139,6 +160,9 @@ impl Screen {
     pub fn refresh(&mut self) -> io::Result<()> {
         debug!("refreshing screen contents");
 
+        // FIXME: Right now this is a completely naive implementation. We redraw the entire screen
+        // on refresh, even if very little changed.
+
         let mut sequences = String::new();
 
         if let Some(fg) = &self.text_color.0 {
@@ -155,6 +179,17 @@ impl Screen {
             write!(sequences, "{}{}", cursor::Goto(1, i), clear::CurrentLine).unwrap();
 
             for cell in row {
+                match (cell.span_start, cell.span_end) {
+                    (Some(style_id), _) => {
+                        let style = &self.styles[style_id as usize];
+                        write!(sequences, "{}", style.enable_sequences()).unwrap();
+                    },
+                    (None, Some(_)) => {
+                        write!(sequences, "{}", Fg(Reset)).unwrap();
+                    }
+                    _ => (),
+                }
+
                 if cell.is_reverse {
                     write!(sequences, "{}{}{}", style::Invert, cell.c, style::NoInvert).unwrap();
                 } else {
@@ -180,6 +215,9 @@ struct Cell {
 
     /// Whether the cell should be reversed.
     is_reverse: bool,
+
+    span_start: Option<u64>,
+    span_end: Option<u64>,
 }
 
 impl Default for Cell {
@@ -187,6 +225,8 @@ impl Default for Cell {
         Cell {
             c: ' ',
             is_reverse: false,
+            span_start: None,
+            span_end: None,
         }
     }
 }

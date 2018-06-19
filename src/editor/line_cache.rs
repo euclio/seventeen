@@ -1,4 +1,5 @@
 use std::mem;
+use std::slice::Chunks;
 
 use log::*;
 
@@ -16,7 +17,48 @@ pub struct LineCache {
 pub struct Line {
     pub(crate) text: String,
     pub(crate) cursors: Option<Vec<u64>>,
-    pub(crate) styles: Vec<Style>,
+    styles: Vec<i64>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct StyleSpan {
+    pub id: u64,
+    pub start: usize,
+    pub length: usize,
+}
+
+impl Line {
+    pub fn iter_style_spans<'a>(&'a self) -> impl Iterator<Item = StyleSpan> + 'a {
+        struct StyleIterator<'a> {
+            style_triples: Chunks<'a, i64>,
+            last_span_end: usize,
+        }
+
+        impl<'a> Iterator for StyleIterator<'a> {
+            type Item = StyleSpan;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.style_triples.next().map(|triple| {
+                    let start_index = triple[0];
+                    let length = triple[1] as usize;
+                    let id = triple[2] as u64;
+
+                    let span_start = ((self.last_span_end as i64) + start_index) as usize;
+                    self.last_span_end = span_start + length;
+                    StyleSpan {
+                        start: span_start,
+                        length,
+                        id,
+                    }
+                })
+            }
+        }
+
+        StyleIterator {
+            style_triples: self.styles.chunks(3),
+            last_span_end: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -43,12 +85,10 @@ impl LineCache {
 
     fn ins(&mut self, lines: Vec<protocol::Line>) {
         debug!("inserting {} lines", lines.len());
-        self.lines.extend(lines.into_iter().map(|line| {
-            Line {
-                text: line.text.expect("attempted to insert line with no text"),
-                cursors: line.cursor,
-                styles: vec![], // FIXME: Unimplemented
-            }
+        self.lines.extend(lines.into_iter().map(|line| Line {
+            text: line.text.expect("attempted to insert line with no text"),
+            cursors: line.cursor,
+            styles: line.styles.unwrap_or_default(),
         }));
     }
 
@@ -132,8 +172,8 @@ impl LineCache {
         }
     }
 
-    pub fn iter_lines(&self) -> impl Iterator<Item = &str> {
-        self.lines.iter().map(|line| line.text.as_str())
+    pub fn iter_lines(&self) -> impl Iterator<Item = &Line> {
+        self.lines.iter().map(|line| line)
     }
 
     pub fn len(&self) -> usize {
@@ -158,7 +198,7 @@ mod tests {
     use protocol::{Line, Op, OpKind, Update};
     use screen::Coordinate;
 
-    use super::LineCache;
+    use super::{LineCache, StyleSpan};
 
     #[test]
     fn insert() {
@@ -171,13 +211,11 @@ mod tests {
                 lines: Some(vec![
                     Line {
                         text: Some(String::from("Hello, world!")),
-                        cursor: Some(vec![]),
-                        styles: Some(vec![]),
+                        ..Default::default()
                     },
                     Line {
                         text: Some(String::from("Goodbye, world!")),
-                        cursor: Some(vec![]),
-                        styles: Some(vec![]),
+                        ..Default::default()
                     },
                 ]),
             }],
@@ -249,13 +287,11 @@ mod tests {
         cache.lines = vec![
             super::Line {
                 text: String::from("Hello, world!"),
-                cursors: None,
-                styles: vec![],
+                ..Default::default()
             },
             super::Line {
                 text: String::from("Goodbye, world!"),
-                cursors: None,
-                styles: vec![],
+                ..Default::default()
             },
         ];
 
@@ -290,5 +326,42 @@ mod tests {
 
         assert!(cache.is_eol(&Coordinate { y: 0, x: 13 }));
         assert!(!cache.is_eol(&Coordinate { y: 0, x: 10 }));
+    }
+
+    #[test]
+    fn style_spans() {
+        let line = super::Line {
+            text: String::from("int main() {}\n"),
+            cursors: Some(vec![0]),
+            styles: vec![0, 3, 2, 0, 1, 3, 0, 4, 4, -1, 3, 2],
+        };
+
+        let spans = line.iter_style_spans().collect::<Vec<_>>();
+
+        assert_eq!(
+            spans,
+            vec![
+                StyleSpan {
+                    start: 0,
+                    length: 3,
+                    id: 2,
+                },
+                StyleSpan {
+                    start: 3,
+                    length: 1,
+                    id: 3,
+                },
+                StyleSpan {
+                    start: 4,
+                    length: 4,
+                    id: 4,
+                },
+                StyleSpan {
+                    start: 7,
+                    length: 3,
+                    id: 2,
+                },
+            ]
+        );
     }
 }

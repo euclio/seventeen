@@ -123,6 +123,7 @@ pub enum Notification {
         id: u64,
         fg_color: Option<u32>,
         bg_color: Option<u32>,
+        weight: Option<u16>,
         underline: Option<bool>,
         italic: Option<bool>,
     },

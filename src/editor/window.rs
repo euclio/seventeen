@@ -32,11 +32,18 @@ impl Window {
         {
             // There might be a newline at the end of the current line, but the terminal already
             // operates linewise.
-            let line = line.trim_right_matches('\n');
-            screen.write_str((i as u16, 0).into(), line);
+            let text = line.text.trim_right_matches('\n');
+            screen.write_str((i as u16, 0).into(), &text);
+
+            for style_span in line.iter_style_spans() {
+                screen.apply_style(
+                    style_span.id,
+                    (i as u16, style_span.start as u16).into(),
+                    style_span.length,
+                );
+            }
         }
 
-        // Add any cursors or styles to the current line.
         for cursor in self.line_cache.iter_cursors() {
             screen.draw_cursor(cursor);
         }

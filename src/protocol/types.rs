@@ -39,9 +39,9 @@ pub enum OpKind {
     Ins,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Line {
     pub text: Option<String>,
     pub cursor: Option<Vec<u64>>,
-    pub styles: Option<Vec<usize>>,
+    pub styles: Option<Vec<i64>>,
 }
