@@ -80,17 +80,23 @@ impl Editor {
 
     fn move_up(&mut self) {
         let active_window = self.windows.get_active_window_mut();
-        self.core.move_up(active_window.view_id.clone()).unwrap();
+
+        if active_window.cursor.y > 0 {
+            self.core.move_up(active_window.view_id.clone()).unwrap();
+        }
     }
 
     fn move_down(&mut self) {
         let active_window = self.windows.get_active_window_mut();
-        self.core.move_down(active_window.view_id.clone()).unwrap();
+
+        if active_window.cursor.y < active_window.rows {
+            self.core.move_down(active_window.view_id.clone()).unwrap();
+        }
     }
 
     fn move_left(&mut self) {
         let active_window = self.windows.get_active_window_mut();
-        if let Coordinate { x: 0, .. } = active_window.cursor {
+        if active_window.cursor.x > 0 {
             self.core.move_left(active_window.view_id.clone()).unwrap();
         }
     }
