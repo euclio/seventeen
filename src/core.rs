@@ -53,7 +53,13 @@ impl Core {
             for line in stdout.lines() {
                 let line = line?;
                 trace!("<- {}", line);
-                let message = serde_json::from_str(&line).unwrap();
+                let message = match serde_json::from_str(&line) {
+                    Ok(message) => message,
+                    Err(err) => {
+                        error!("could not deserialize message from core, skipping: {}", err);
+                        continue;
+                    },
+                };
                 match message {
                     Message::Notification(not) => {
                         event_tx.send(Event::CoreNotification(not)).unwrap()
