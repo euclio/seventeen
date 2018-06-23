@@ -31,6 +31,10 @@ struct Opt {
     #[structopt(parse(from_os_str))]
     file: Option<PathBuf>,
 
+    /// Path to the editor core executable
+    #[structopt(long = "core", parse(from_os_str), default_value = "xi-core")]
+    core: PathBuf,
+
     /// Write log messages to this file
     #[structopt(long = "log-file", parse(from_os_str), default_value = "/tmp/seventeen.log")]
     log_file: PathBuf,
@@ -62,7 +66,7 @@ fn run(opt: Opt) -> Result<(), Box<Error>> {
         Ok(())
     });
 
-    let core = Core::spawn(event_tx.clone())?;
+    let core = Core::spawn(opt.core, event_tx.clone())?;
     let editor = Editor::new(core, opt.file);
 
     editor.run(event_rx);

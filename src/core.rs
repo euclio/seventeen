@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::{self, prelude::*, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -35,10 +35,10 @@ pub struct Core {
 }
 
 impl Core {
-    pub fn spawn(event_tx: Sender<Event>) -> io::Result<Self> {
+    pub fn spawn(path: impl AsRef<Path>, event_tx: Sender<Event>) -> io::Result<Self> {
         info!("spawning core");
 
-        let mut core = Command::new("xi-core")
+        let mut core = Command::new(path.as_ref())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
