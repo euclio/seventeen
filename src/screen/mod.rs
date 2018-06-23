@@ -1,5 +1,4 @@
-use std::fmt::Write as FmtWrite;
-use std::io::{self, Write};
+use std::io::{self, Stdout, Write};
 
 use log::*;
 use ndarray::prelude::*;
@@ -7,7 +6,7 @@ use termion::{
     self, clear,
     color::{Bg, Fg, Reset, Rgb},
     cursor,
-    raw::IntoRawMode,
+    raw::{IntoRawMode, RawTerminal},
     screen::AlternateScreen,
     style,
 };
@@ -30,19 +29,6 @@ pub struct Style {
     pub italic: bool,
 }
 
-impl Style {
-    /// Returns a string containing the appropriate escape sequences to enable the style.
-    fn enable_sequences(&self) -> String {
-        let mut sequences = String::new();
-
-        if let Some(fg) = &self.fg {
-            write!(sequences, "{}", Fg(Rgb(fg.r, fg.g, fg.b))).unwrap();
-        }
-
-        sequences
-    }
-}
-
 /// A position in the terminal, zero-indexed.
 #[derive(Debug, Clone, Copy)]
 pub struct Coordinate {
@@ -62,7 +48,10 @@ impl From<(u16, u16)> for Coordinate {
 /// writing the appropriate escape sequences by calling `refresh()`.
 ///
 /// Note that unlike raw escape sequences, all indices expected by this struct are 0-based.
-pub struct Screen {
+pub struct Screen<W = AlternateScreen<RawTerminal<Stdout>>>
+where
+    W: Write,
+{
     /// A buffer containing what should be displayed on the screen at the next refresh.
     buf: Buffer,
 
@@ -72,7 +61,7 @@ pub struct Screen {
     /// Foreground and background color for text.
     text_color: (Option<Color>, Option<Color>),
 
-    out: Box<Write>,
+    out: W,
 }
 
 impl Screen {
@@ -86,20 +75,21 @@ impl Screen {
         Self::new_from_write(usize::from(height), usize::from(width), screen)
     }
 
-    fn new_from_write<W>(height: usize, width: usize, write: W) -> io::Result<Self>
+    fn new_from_write<W>(height: usize, width: usize, write: W) -> io::Result<Screen<W>>
     where
-        W: Write + 'static,
+        W: Write,
     {
-        let out = Box::new(write);
         let buf = Buffer::from_elem((height, width), Cell::default());
-        Ok(Self {
+        Ok(Screen {
             buf,
-            out,
+            out: write,
             styles: vec![Style::default(); RESERVED_STYLES],
             text_color: (None, None),
         })
     }
+}
 
+impl<W: Write> Screen<W> {
     pub fn define_style(&mut self, id: u64, style: Style) {
         info!(
             "defined style {}: fg={} bg={} bold={} underline={} italic={}",
@@ -126,7 +116,17 @@ impl Screen {
         }
     }
 
+    fn style(&self, id: u64) -> &Style {
+        &self.styles[id as usize]
+    }
+
     pub fn apply_style(&mut self, id: u64, Coordinate { y, x }: Coordinate, n: usize) {
+        trace!(
+            "applying style {} from {:?} to {:?}",
+            id,
+            (y, x),
+            (y, x + n as u16)
+        );
         let mut row = self.buf.row_mut(usize::from(y));
         row[usize::from(x)].span_start = Some(id);
         row[(u64::from(x) + n as u64) as usize].span_end = Some(id);
@@ -163,44 +163,110 @@ impl Screen {
         // FIXME: Right now this is a completely naive implementation. We redraw the entire screen
         // on refresh, even if very little changed.
 
-        let mut sequences = String::new();
-
         if let Some(fg) = &self.text_color.0 {
-            write!(sequences, "{}", Fg(Rgb(fg.r, fg.g, fg.b))).unwrap();
+            write!(self.out, "{}", Fg(Rgb(fg.r, fg.g, fg.b)))?;
         }
 
         if let Some(bg) = &self.text_color.1 {
-            write!(sequences, "{}", Bg(Rgb(bg.r, bg.g, bg.b))).unwrap();
+            write!(self.out, "{}", Bg(Rgb(bg.r, bg.g, bg.b)))?;
         }
 
         // enumerate() doesn't seem to work here?
         let mut i = 1;
         for row in self.buf.genrows() {
-            write!(sequences, "{}{}", cursor::Goto(1, i), clear::CurrentLine).unwrap();
+            write!(self.out, "{}{}", cursor::Goto(1, i), clear::CurrentLine)?;
+
+            let mut bold_spans = 0u32;
+            let mut italic_spans = 0u32;
+            let mut underline_spans = 0u32;
 
             for cell in row {
-                match (cell.span_start, cell.span_end) {
-                    (Some(style_id), _) => {
-                        let style = &self.styles[style_id as usize];
-                        write!(sequences, "{}", style.enable_sequences()).unwrap();
-                    },
-                    (None, Some(_)) => {
-                        write!(sequences, "{}", Fg(Reset)).unwrap();
+                let starting_style = cell.span_start.map(|id| self.style(id).clone());
+                let ending_style = cell.span_end.map(|id| self.style(id).clone());
+
+                if let Some(style) = &starting_style {
+                    if let Some(fg) = &style.fg {
+                        write!(self.out, "{}", Fg(fg.as_escapes()))?;
                     }
-                    _ => (),
+
+                    if style.bold {
+                        if bold_spans == 0 {
+                            write!(self.out, "{}", style::Bold)?;
+                        }
+                        bold_spans += 1;
+                    }
+
+                    if style.italic {
+                        if italic_spans == 0 {
+                            write!(self.out, "{}", style::Italic)?;
+                        }
+                        italic_spans += 1;
+                    }
+
+                    if style.underline {
+                        if underline_spans == 0 {
+                            write!(self.out, "{}", style::Underline)?;
+                        }
+                        underline_spans += 1;
+                    }
+                }
+
+                if let Some(style) = ending_style {
+                    if style.fg.is_some()
+                        && !starting_style
+                            .as_ref()
+                            .map(|style| style.fg.is_some())
+                            .unwrap_or_default()
+                    {
+                        write!(self.out, "{}", Fg(Reset))?;
+                    }
+
+                    if style.bg.is_some()
+                        && starting_style
+                            .map(|style| style.bg.is_some())
+                            .unwrap_or_default()
+                    {
+                        write!(self.out, "{}", Bg(Reset))?;
+                    }
+
+                    if style.bold {
+                        bold_spans -= 1;
+                        if bold_spans == 0 {
+                            // While disabling bold is technically the right escape sequence to use
+                            // here (SGR 21), it's not supported by iTerm2 or xterm. So, we emit
+                            // SGR 22, which disables bold and faint. We don't use faint anywhere
+                            // else, so it's OK.
+                            //
+                            // See https://gitlab.com/gnachman/iterm2/issues/3208
+                            write!(self.out, "{}", style::NoFaint)?;
+                        }
+                    }
+
+                    if style.italic {
+                        italic_spans -= 1;
+                        if italic_spans == 0 {
+                            write!(self.out, "{}", style::NoItalic)?;
+                        }
+                    }
+
+                    if style.underline {
+                        underline_spans -= 1;
+                        if underline_spans == 0 {
+                            write!(self.out, "{}", style::NoUnderline)?;
+                        }
+                    }
                 }
 
                 if cell.is_reverse {
-                    write!(sequences, "{}{}{}", style::Invert, cell.c, style::NoInvert).unwrap();
+                    write!(self.out, "{}{}{}", style::Invert, cell.c, style::NoInvert)?;
                 } else {
-                    write!(sequences, "{}", cell.c).unwrap();
+                    write!(self.out, "{}", cell.c)?;
                 }
             }
 
             i += 1;
         }
 
-        self.out.write_all(sequences.as_bytes())?;
         self.out.flush()?;
 
         Ok(())
@@ -235,7 +301,14 @@ impl Default for Cell {
 mod tests {
     use std::io::Cursor;
 
-    use super::Screen;
+    use termion::{
+        clear,
+        color::{Fg, Reset, Rgb},
+        cursor::Goto,
+        style::{Bold, Italic, NoFaint, NoItalic},
+    };
+
+    use super::{Color, Screen, Style};
 
     #[test]
     fn write_str() {
@@ -243,8 +316,6 @@ mod tests {
         let mut screen = Screen::new_from_write(5, 15, buf).unwrap();
 
         screen.write_str((0, 0).into(), "Hello, world!");
-
-        println!("{:?}", screen.buf);
 
         assert_eq!(
             screen
@@ -256,6 +327,168 @@ mod tests {
                 .map(|cell| cell.c)
                 .collect::<String>(),
             "Hello, world!  "
+        );
+    }
+
+    #[test]
+    fn simple_span() {
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(1, 15, buf).unwrap();
+
+        screen.write_str((0, 0).into(), "Hello, world!");
+        screen.define_style(
+            1,
+            Style {
+                bold: true,
+                ..Default::default()
+            },
+        );
+        screen.apply_style(1, (0, 0).into(), 5);
+        screen.refresh().unwrap();
+
+        let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
+        assert_eq!(
+            sequences,
+            format!(
+                "{}{}{}Hello{}, world!  ",
+                Goto(1, 1),
+                clear::CurrentLine,
+                Bold,
+                NoFaint,
+            )
+        );
+    }
+
+    #[test]
+    fn end_to_end_spans() {
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(1, 15, buf).unwrap();
+
+        screen.write_str((0, 0).into(), "bolditalic");
+        screen.define_style(
+            1,
+            Style {
+                bold: true,
+                ..Default::default()
+            },
+        );
+        screen.define_style(
+            2,
+            Style {
+                italic: true,
+                ..Default::default()
+            },
+        );
+        screen.apply_style(1, (0, 0).into(), 4);
+        screen.apply_style(2, (0, 4).into(), 6);
+        screen.refresh().unwrap();
+
+        let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
+        assert_eq!(
+            sequences,
+            format!(
+                "{}{}{}bold{}{}italic{}     ",
+                Goto(1, 1),
+                clear::CurrentLine,
+                Bold,
+                Italic,
+                NoFaint,
+                NoItalic,
+            )
+        );
+    }
+
+    #[test]
+    fn disjoint_spans() {
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(1, 15, buf).unwrap();
+
+        screen.write_str((0, 0).into(), "int main() {}");
+        screen.define_style(
+            2,
+            Style {
+                bold: true,
+                ..Default::default()
+            },
+        );
+        screen.define_style(
+            3,
+            Style {
+                bold: false,
+                ..Default::default()
+            },
+        );
+        screen.define_style(
+            4,
+            Style {
+                bold: true,
+                ..Default::default()
+            },
+        );
+        screen.apply_style(2, (0, 0).into(), 3);
+        screen.apply_style(3, (0, 3).into(), 1);
+        screen.apply_style(4, (0, 4).into(), 4);
+        screen.refresh().unwrap();
+
+        let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
+        assert_eq!(
+            sequences,
+            format!(
+                "{}{}{}int{} {}main{}() {{}}  ",
+                Goto(1, 1),
+                clear::CurrentLine,
+                Bold,
+                NoFaint,
+                Bold,
+                NoFaint,
+            ),
+        );
+    }
+
+    #[test]
+    fn color_change() {
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(1, 15, buf).unwrap();
+
+        screen.write_str((0, 0).into(), "redgreenblue");
+        screen.define_style(
+            2,
+            Style {
+                fg: Some(Color { r: 255, g: 0, b: 0 }),
+                ..Default::default()
+            },
+        );
+        screen.define_style(
+            3,
+            Style {
+                fg: Some(Color { r: 0, g: 255, b: 0 }),
+                ..Default::default()
+            },
+        );
+        screen.define_style(
+            4,
+            Style {
+                fg: Some(Color { r: 0, g: 0, b: 255 }),
+                ..Default::default()
+            },
+        );
+        screen.apply_style(2, (0, 0).into(), 3);
+        screen.apply_style(3, (0, 3).into(), 5);
+        screen.apply_style(4, (0, 8).into(), 4);
+        screen.refresh().unwrap();
+
+        let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
+        assert_eq!(
+            sequences,
+            format!(
+                "{}{}{}red{}green{}blue{}   ",
+                Goto(1, 1),
+                clear::CurrentLine,
+                Fg(Rgb(255, 0, 0)),
+                Fg(Rgb(0, 255, 0)),
+                Fg(Rgb(0, 0, 255)),
+                Fg(Reset),
+            ),
         );
     }
 }

@@ -1,5 +1,7 @@
 use std::fmt::{self, Display};
 
+use termion::color::Rgb;
+
 use protocol;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -16,6 +18,10 @@ impl Color {
             g: ((argb & 0x0000_ff00) >> 8) as u8,
             b: (argb & 0x0000_00ff) as u8,
         }
+    }
+
+    pub fn as_escapes(&self) -> Rgb {
+        Rgb(self.r, self.g, self.b)
     }
 }
 

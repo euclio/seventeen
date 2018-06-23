@@ -58,7 +58,7 @@ impl Core {
                     Err(err) => {
                         error!("could not deserialize message from core, skipping: {}", err);
                         continue;
-                    },
+                    }
                 };
                 match message {
                     Message::Notification(not) => {
