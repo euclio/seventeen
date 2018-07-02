@@ -73,6 +73,21 @@ impl LineCache {
         Self::default()
     }
 
+    #[cfg(test)]
+    pub fn new_from_lines(lines: &'static [&'static str]) -> Self {
+        LineCache {
+            invalid_before: 0,
+            lines: lines
+                .iter()
+                .map(|line| Line {
+                    text: line.to_string(),
+                    ..Default::default()
+                })
+                .collect(),
+            invalid_after: 0,
+        }
+    }
+
     /// True if a given terminal coordinate is at the end of a line in the cache.
     pub fn is_eol(&self, coordinate: &Coordinate) -> bool {
         self.lines

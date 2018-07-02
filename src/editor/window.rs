@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io;
+use std::io::{self, Write};
 use std::ops::{Index, IndexMut};
 
 use log::*;
@@ -21,7 +21,7 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn render(&self, screen: &mut Screen) -> io::Result<()> {
+    pub fn render<W: Write>(&self, screen: &mut Screen<W>) -> io::Result<()> {
         screen.erase();
 
         for (i, line) in self
@@ -32,7 +32,12 @@ impl Window {
         {
             // There might be a newline at the end of the current line, but the terminal already
             // operates linewise.
-            let text = line.text.trim_right_matches('\n');
+            let text = line
+                .text
+                .trim_right_matches('\n')
+                .chars()
+                .take(usize::from(self.cols))   // FIXME: this width check is bogus for non-ASCII
+                .collect::<String>();
             screen.write_str((i as u16, 0).into(), &text);
 
             for style_span in line.iter_style_spans() {
@@ -119,5 +124,33 @@ impl<'a> Index<&'a ViewId> for WindowMap {
 impl<'a> IndexMut<&'a ViewId> for WindowMap {
     fn index_mut(&mut self, index: &'a ViewId) -> &mut Window {
         self.map.get_mut(index).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::io::Cursor;
+
+    use super::{LineCache, Screen, ViewId, Window};
+
+    #[test]
+    fn window_smaller_than_cache() {
+        const ROWS: u16 = 1;
+        const COLS: u16 = 5;
+
+        let cache = LineCache::new_from_lines(&["hello, world!", "goodbye, world!"]);
+
+        let window = Window {
+            line_cache: cache,
+            cursor: (0, 0).into(),
+            rows: ROWS,
+            cols: COLS,
+            view_id: ViewId("view-id-1".to_string()),
+        };
+
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(ROWS as usize, COLS as usize, buf).unwrap();
+
+        window.render(&mut screen).unwrap();
     }
 }

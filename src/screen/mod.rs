@@ -75,7 +75,7 @@ impl Screen {
         Self::new_from_write(usize::from(height), usize::from(width), screen)
     }
 
-    fn new_from_write<W>(height: usize, width: usize, write: W) -> io::Result<Screen<W>>
+    pub fn new_from_write<W>(height: usize, width: usize, write: W) -> io::Result<Screen<W>>
     where
         W: Write,
     {
@@ -128,8 +128,13 @@ impl<W: Write> Screen<W> {
             (y, x + n as u16)
         );
         let mut row = self.buf.row_mut(usize::from(y));
-        row[usize::from(x)].span_start = Some(id);
-        row[(u64::from(x) + n as u64) as usize].span_end = Some(id);
+
+        if let Some(cell) = &mut row.get_mut(usize::from(x)) {
+            cell.span_start = Some(id);
+        }
+        if let Some(cell) = &mut row.get_mut((u64::from(x) + n as u64) as usize) {
+            cell.span_end = Some(id);
+        }
     }
 
     pub fn write_str(&mut self, Coordinate { y, x }: Coordinate, s: &str) {
@@ -262,6 +267,19 @@ impl<W: Write> Screen<W> {
                 } else {
                     write!(self.out, "{}", cell.c)?;
                 }
+            }
+
+            // The ending spans might not have been applied if the window is too small.
+            if bold_spans > 0 {
+                write!(self.out, "{}", style::NoFaint)?;
+            }
+
+            if italic_spans > 0 {
+                write!(self.out, "{}", style::NoItalic)?;
+            }
+
+            if underline_spans > 0 {
+                write!(self.out, "{}", style::NoUnderline)?;
             }
 
             i += 1;
@@ -441,6 +459,61 @@ mod tests {
                 NoFaint,
                 Bold,
                 NoFaint,
+            ),
+        );
+    }
+
+    #[test]
+    fn span_out_of_bounds() {
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(3, 10, buf).unwrap();
+        screen.write_str((0, 0).into(), "foobarbaz");
+        screen.write_str((1, 0).into(), "quux quux");
+        screen.write_str((2, 0).into(), "xyzzyxyzzy");
+        screen.define_style(
+            2,
+            Style {
+                bold: true,
+                ..Default::default()
+            },
+        );
+        screen.define_style(
+            3,
+            Style {
+                italic: true,
+                ..Default::default()
+            },
+        );
+        screen.define_style(
+            4,
+            Style {
+                underline: true,
+                ..Default::default()
+            },
+        );
+
+        screen.apply_style(2, (0, 0).into(), 20);
+        screen.apply_style(3, (1, 5).into(), 10);
+        screen.apply_style(4, (2, 20).into(), 5);
+        screen.refresh().unwrap();
+
+        let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
+        assert_eq!(
+            sequences,
+            format!(
+                "{}{}{}foobarbaz {}\
+                {}{}quux {}quux {}\
+                {}{}xyzzyxyzzy",
+                Goto(1, 1),
+                clear::CurrentLine,
+                Bold,
+                NoFaint,
+                Goto(1, 2),
+                clear::CurrentLine,
+                Italic,
+                NoItalic,
+                Goto(1, 3),
+                clear::CurrentLine,
             ),
         );
     }
