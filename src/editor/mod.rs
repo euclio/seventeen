@@ -201,6 +201,9 @@ impl Editor {
                     Notification::AvailableThemes { themes } => {
                         info!("available themes: {:?}", themes);
                     }
+                    Notification::AvailablePlugins { view_id, plugins } => {
+                        info!("available plugins for view {}: {:?}", view_id, plugins);
+                    }
                     _ => error!("unhandled notification: {:?}", not),
                 },
             }
