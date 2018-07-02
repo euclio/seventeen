@@ -198,6 +198,9 @@ impl Editor {
                     Notification::PluginStarted { view_id, plugin } => {
                         info!("{} started on {:?}", plugin, view_id);
                     }
+                    Notification::AvailableThemes { themes } => {
+                        info!("available themes: {:?}", themes);
+                    }
                     _ => error!("unhandled notification: {:?}", not),
                 },
             }
