@@ -197,6 +197,7 @@ pub struct Color {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
 
     use serde_json::{self, json, json_internal};
@@ -265,6 +266,34 @@ mod tests {
                 "method": "scroll",
                 "params": vec![0, 18],
                 "view_id": "view-id-4",
+            },
+        });
+
+        assert_eq!(serde_json::to_value(not).unwrap(), json);
+    }
+
+    #[test]
+    fn config_changed() {
+        let not = Notification::ConfigChanged {
+            view_id: ViewId(String::from("view-id-2")),
+            changes: ConfigChanges {
+                other: {
+                    let mut map = BTreeMap::new();
+                    map.insert("tab_size".to_string(), json!(4));
+                    map.insert("theme".to_string(), json!("Solarized (dark)"));
+                    map
+                },
+            },
+        };
+
+        let json = json!({
+            "method": "config_changed",
+            "params": {
+                "view_id": "view-id-2",
+                "changes": {
+                    "tab_size": 4,
+                    "theme": "Solarized (dark)",
+                },
             },
         });
 

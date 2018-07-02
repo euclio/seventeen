@@ -1,6 +1,8 @@
+use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 
 use serde_derive::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ViewId(pub String);
@@ -17,10 +19,10 @@ pub struct Plugin {
     pub running: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConfigChanges {
-    tab_size: u16,
-    pub theme: String,
+    #[serde(flatten)]
+    pub other: BTreeMap<String, Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

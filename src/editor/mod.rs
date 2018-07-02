@@ -8,6 +8,7 @@ use xdg::BaseDirectories;
 use core::Core;
 use protocol::{ConfigChanges, Notification, ThemeSettings, Update, ViewId};
 use screen::{Color, Coordinate, Screen, Style};
+use serde_json::Value;
 use Event;
 
 mod line_cache;
@@ -69,7 +70,11 @@ impl Editor {
     }
 
     fn config_changed(&mut self, changes: ConfigChanges) {
-        self.core.set_theme(&changes.theme).unwrap();
+        // This will likely break in the future. `theme` is a nonstandard configuration option.
+        // See https://github.com/google/xi-editor/issues/722 for the motivation.
+        if let Some(Value::String(theme)) = changes.other.get("theme") {
+            self.core.set_theme(&theme).unwrap();
+        }
     }
 
     fn theme_changed(&mut self, name: String, theme: ThemeSettings) {
