@@ -2,6 +2,7 @@
 authors = ["Andy Russell <arussell123@gmail.com>"]
 name = "seventeen"
 version = "0.1.0"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 bitflags = "1"
