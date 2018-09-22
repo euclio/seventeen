@@ -62,11 +62,12 @@ impl Editor {
     fn scroll_to(&mut self, view_id: ViewId, line: u64, col: u64) {
         let active_window = self.windows.get_active_window_mut();
         debug_assert!(view_id == active_window.view_id);
-        active_window.cursor = Coordinate {
+        active_window.scroll_to(Coordinate {
             y: line as u16,
             x: col as u16,
-        };
-        debug!("scrolled cursor to {:?}", active_window.cursor);
+        });
+        active_window.render(&mut self.screen).unwrap();
+        self.screen.refresh().unwrap();
     }
 
     fn config_changed(&mut self, changes: ConfigChanges) {
@@ -88,17 +89,25 @@ impl Editor {
     fn move_up(&mut self) {
         let active_window = self.windows.get_active_window_mut();
 
-        if active_window.cursor.y > 0 {
-            self.core.move_up(active_window.view_id.clone()).unwrap();
+        // If the `move_up` RPC is sent while the cursor is in the top row, the cursor will move to
+        // the beginning of the line. vim will keep the cursor at the same position.
+        if active_window.cursor.y == 0 {
+            return;
         }
+
+        self.core.move_up(active_window.view_id.clone()).unwrap();
     }
 
     fn move_down(&mut self) {
         let active_window = self.windows.get_active_window_mut();
 
-        if active_window.cursor.y < active_window.rows {
-            self.core.move_down(active_window.view_id.clone()).unwrap();
+        // If the `move_down` RPC is sent while the cursor is on the bottom row, the cursor will
+        // move to the end of the line. vim will keep the cursor at the same position.
+        if (active_window.cursor.y as usize) >= active_window.buffer_len() {
+            return;
         }
+
+        self.core.move_down(active_window.view_id.clone()).unwrap();
     }
 
     fn move_left(&mut self) {

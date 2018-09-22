@@ -13,6 +13,7 @@ use super::line_cache::LineCache;
 
 #[derive(Debug)]
 pub struct Window {
+    pub offset: u16,
     pub line_cache: LineCache,
     pub rows: u16,
     pub cols: u16,
@@ -27,6 +28,7 @@ impl Window {
         for (i, line) in self
             .line_cache
             .iter_lines()
+            .skip(self.offset as usize)
             .enumerate()
             .take(self.rows as usize)
         {
@@ -47,10 +49,13 @@ impl Window {
                     style_span.length,
                 );
             }
-        }
 
-        for cursor in self.line_cache.iter_cursors() {
-            screen.draw_cursor(cursor);
+            for offset in line.iter_cursors() {
+                screen.draw_cursor(Coordinate {
+                    x: offset as u16,
+                    y: i as u16,
+                });
+            }
         }
 
         // If there are more rows in the window than lines in the cache, then fill out the
@@ -58,7 +63,6 @@ impl Window {
         let starting_line_no = self.line_cache.len() as u16;
 
         // FIXME: Don't display the trailing newline here.
-        //
         // To do this, we need to distinguish between the file having a trailing newline and a file
         // having its last line being written. It'd be nice to use the cursor for this, but the
         // cursor doesn't actually get its correct position until the `scroll_to` notification gets
@@ -69,6 +73,27 @@ impl Window {
         }
 
         Ok(())
+    }
+
+    /// The total number of lines in the window's buffer.
+    pub fn buffer_len(&self) -> usize {
+        self.line_cache.len()
+    }
+
+    /// Scrolls the main cursor in a window to a coordinate.
+    ///
+    /// If the coordinate is off-screen, an internal offset is updated so that the cursor will
+    /// appear on-screen on the next screen refresh.
+    pub fn scroll_to(&mut self, coordinate: Coordinate) {
+        self.cursor = coordinate;
+
+        if self.cursor.y > self.offset + self.rows - 1 {
+            self.offset = self.cursor.y - (self.rows - 1);
+        } else if self.cursor.y < self.offset {
+            self.offset = self.cursor.y;
+        }
+
+        debug!("scrolled cursor to {:?}, offset {}", self.cursor, self.offset);
     }
 }
 
@@ -82,6 +107,7 @@ impl WindowMap {
     pub fn new(core: &mut Core, active_view_id: ViewId) -> Self {
         let (cols, rows) = termion::terminal_size().unwrap();
         let window = Window {
+            offset: 0,
             cursor: (0, 0).into(),
             rows,
             cols,
@@ -132,6 +158,7 @@ mod test {
     use std::io::Cursor;
 
     use super::{LineCache, Screen, ViewId, Window};
+    use screen::Coordinate;
 
     #[test]
     fn window_smaller_than_cache() {
@@ -141,6 +168,7 @@ mod test {
         let cache = LineCache::new_from_lines(&["hello, world!", "goodbye, world!"]);
 
         let window = Window {
+            offset: 0,
             line_cache: cache,
             cursor: (0, 0).into(),
             rows: ROWS,
@@ -152,5 +180,37 @@ mod test {
         let mut screen = Screen::new_from_write(ROWS as usize, COLS as usize, buf).unwrap();
 
         window.render(&mut screen).unwrap();
+    }
+
+    #[test]
+    fn scroll_to() {
+        const ROWS: u16 = 5;
+        const COLS: u16 = 10;
+
+        let cache = LineCache::new_from_lines(&["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+
+        let mut window = Window {
+            offset: 0,
+            line_cache: cache,
+            cursor: (0, 0).into(),
+            rows: ROWS,
+            cols: COLS,
+            view_id: ViewId("view-id-1".to_string()),
+        };
+
+        window.scroll_to(Coordinate { x: 0, y: 3 });
+        assert_eq!(window.offset, 0);
+
+        window.scroll_to(Coordinate { x: 0, y: 5 });
+        assert_eq!(window.offset, 1);
+
+        window.scroll_to(Coordinate { x: 0, y: 7 });
+        assert_eq!(window.offset, 3);
+
+        window.scroll_to(Coordinate { x: 0, y: 3 });
+        assert_eq!(window.offset, 3);
+
+        window.scroll_to(Coordinate { x: 0, y: 0 });
+        assert_eq!(window.offset, 0);
     }
 }

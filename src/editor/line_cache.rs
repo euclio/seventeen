@@ -28,6 +28,11 @@ pub struct StyleSpan {
 }
 
 impl Line {
+    /// Returns the offset of each cursor within the line.
+    pub fn iter_cursors<'a>(&'a self) -> impl Iterator<Item = u64> + 'a {
+        self.cursors.iter().flat_map(|cursors| cursors.iter().cloned())
+    }
+
     pub fn iter_style_spans<'a>(&'a self) -> impl Iterator<Item = StyleSpan> + 'a {
         struct StyleIterator<'a> {
             style_triples: Chunks<'a, i64>,
@@ -188,23 +193,11 @@ impl LineCache {
     }
 
     pub fn iter_lines(&self) -> impl Iterator<Item = &Line> {
-        self.lines.iter().map(|line| line)
+        self.lines.iter()
     }
 
     pub fn len(&self) -> usize {
         self.invalid_before as usize + self.lines.len() + self.invalid_after as usize
-    }
-
-    /// Returns the position of each cursor.
-    pub fn iter_cursors<'a>(&'a self) -> impl Iterator<Item = Coordinate> + 'a {
-        self.lines.iter().enumerate().flat_map(|(line_no, line)| {
-            line.cursors.iter().flat_map(move |cursors| {
-                cursors.iter().map(move |idx| Coordinate {
-                    x: *idx as u16,
-                    y: line_no as u16,
-                })
-            })
-        })
     }
 }
 
