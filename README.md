@@ -1,4 +1,4 @@
-# seventeen
+# seventeen [![Build Status](https://travis-ci.org/euclio/seventeen.svg?branch=master)](https://travis-ci.org/euclio/seventeen)
 
 The sum of [xi] and [vi].
 
