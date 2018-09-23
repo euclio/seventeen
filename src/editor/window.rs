@@ -13,16 +13,28 @@ use super::line_cache::LineCache;
 
 #[derive(Debug)]
 pub struct Window {
-    pub row_offset: u16,
-    pub col_offset: u16,
-    pub line_cache: LineCache,
-    pub rows: u16,
-    pub cols: u16,
-    pub cursor: Coordinate,
     pub view_id: ViewId,
+    pub cursor: Coordinate,
+    pub line_cache: LineCache,
+    row_offset: u16,
+    col_offset: u16,
+    rows: u16,
+    cols: u16,
 }
 
 impl Window {
+    pub fn new(id: ViewId, rows: u16, cols: u16) -> Self {
+        Self {
+            view_id: id,
+            rows,
+            cols,
+            row_offset: 0,
+            col_offset: 0,
+            line_cache: LineCache::new(),
+            cursor: (0, 0).into(),
+        }
+    }
+
     pub fn render<W: Write>(&self, screen: &mut Screen<W>) -> io::Result<()> {
         screen.erase();
 
@@ -48,7 +60,8 @@ impl Window {
                 // Skip any spans that end before the column offset or start after the end of the
                 // screen.
                 if style_span.start + style_span.length <= self.col_offset.into()
-                    || usize::from(self.col_offset + self.cols) <= style_span.start {
+                    || usize::from(self.col_offset + self.cols) <= style_span.start
+                {
                     continue;
                 }
 
@@ -138,15 +151,7 @@ pub struct WindowMap {
 impl WindowMap {
     pub fn new(core: &mut Core, active_view_id: ViewId) -> Self {
         let (cols, rows) = termion::terminal_size().unwrap();
-        let window = Window {
-            col_offset: 0,
-            row_offset: 0,
-            cursor: (0, 0).into(),
-            rows,
-            cols,
-            line_cache: LineCache::new(),
-            view_id: active_view_id.clone(),
-        };
+        let window = Window::new(active_view_id.clone(), rows, cols);
         info!(
             "creating window at {:?}: width={} height={}",
             (1, 1),
@@ -198,17 +203,8 @@ mod test {
         const ROWS: u16 = 1;
         const COLS: u16 = 5;
 
-        let cache = LineCache::new_from_lines(&["hello, world!", "goodbye, world!"]);
-
-        let window = Window {
-            row_offset: 0,
-            col_offset: 0,
-            line_cache: cache,
-            cursor: (0, 0).into(),
-            rows: ROWS,
-            cols: COLS,
-            view_id: ViewId("view-id-1".to_string()),
-        };
+        let mut window = Window::new(ViewId("view-id-1".into()), ROWS, COLS);
+        window.line_cache = LineCache::new_from_lines(&["hello, world!", "goodbye, world!"]);
 
         let buf = Cursor::new(vec![]);
         let mut screen = Screen::new_from_write(ROWS as usize, COLS as usize, buf).unwrap();
@@ -221,17 +217,9 @@ mod test {
         const ROWS: u16 = 5;
         const COLS: u16 = 10;
 
-        let cache = LineCache::new_from_lines(&["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
-
-        let mut window = Window {
-            row_offset: 0,
-            col_offset: 0,
-            line_cache: cache,
-            cursor: (0, 0).into(),
-            rows: ROWS,
-            cols: COLS,
-            view_id: ViewId("view-id-1".to_string()),
-        };
+        let mut window = Window::new(ViewId("view-id-1".into()), ROWS, COLS);
+        window.line_cache =
+            LineCache::new_from_lines(&["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
 
         window.scroll_to(Coordinate { x: 0, y: 3 });
         assert_eq!(window.row_offset, 0);
