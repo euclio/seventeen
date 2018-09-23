@@ -13,7 +13,8 @@ use super::line_cache::LineCache;
 
 #[derive(Debug)]
 pub struct Window {
-    pub offset: u16,
+    pub row_offset: u16,
+    pub col_offset: u16,
     pub line_cache: LineCache,
     pub rows: u16,
     pub cols: u16,
@@ -28,9 +29,9 @@ impl Window {
         for (i, line) in self
             .line_cache
             .iter_lines()
-            .skip(self.offset as usize)
+            .skip(self.row_offset.into())
             .enumerate()
-            .take(self.rows as usize)
+            .take(self.rows.into())
         {
             // There might be a newline at the end of the current line, but the terminal already
             // operates linewise.
@@ -38,11 +39,26 @@ impl Window {
                 .text
                 .trim_right_matches('\n')
                 .chars()
-                .take(usize::from(self.cols))   // FIXME: this width check is bogus for non-ASCII
+                .skip(self.col_offset.into())
+                .take(self.cols.into()) // FIXME: this width check is bogus for non-ASCII
                 .collect::<String>();
             screen.write_str((i as u16, 0).into(), &text);
 
-            for style_span in line.iter_style_spans() {
+            for mut style_span in line.iter_style_spans() {
+                // Skip any spans that end before the column offset or start after the end of the
+                // screen.
+                if style_span.start + style_span.length <= self.col_offset.into()
+                    || usize::from(self.col_offset + self.cols) <= style_span.start {
+                    continue;
+                }
+
+                if style_span.start < usize::from(self.col_offset) {
+                    style_span.length -= usize::from(self.col_offset) - style_span.start;
+                    style_span.start = 0;
+                } else {
+                    style_span.start -= usize::from(self.col_offset);
+                }
+
                 screen.apply_style(
                     style_span.id,
                     (i as u16, style_span.start as u16).into(),
@@ -51,8 +67,15 @@ impl Window {
             }
 
             for offset in line.iter_cursors() {
+                // Skip any cursors that aren't on the screen.
+                if offset < self.col_offset.into()
+                    || u64::from(self.col_offset + self.cols) <= offset
+                {
+                    continue;
+                }
+
                 screen.draw_cursor(Coordinate {
-                    x: offset as u16,
+                    x: offset as u16 - self.col_offset,
                     y: i as u16,
                 });
             }
@@ -87,13 +110,22 @@ impl Window {
     pub fn scroll_to(&mut self, coordinate: Coordinate) {
         self.cursor = coordinate;
 
-        if self.cursor.y > self.offset + self.rows - 1 {
-            self.offset = self.cursor.y - (self.rows - 1);
-        } else if self.cursor.y < self.offset {
-            self.offset = self.cursor.y;
+        if self.cursor.x >= self.col_offset + self.cols {
+            self.col_offset = self.cursor.x - (self.cols - 1);
+        } else if self.cursor.x < self.col_offset {
+            self.col_offset = self.cursor.x;
         }
 
-        debug!("scrolled cursor to {:?}, offset {}", self.cursor, self.offset);
+        if self.cursor.y > self.row_offset + self.rows - 1 {
+            self.row_offset = self.cursor.y - (self.rows - 1);
+        } else if self.cursor.y < self.row_offset {
+            self.row_offset = self.cursor.y;
+        }
+
+        debug!(
+            "scrolled cursor to {:?}, row_offset={}, col_offset={}",
+            self.cursor, self.row_offset, self.col_offset
+        );
     }
 }
 
@@ -107,7 +139,8 @@ impl WindowMap {
     pub fn new(core: &mut Core, active_view_id: ViewId) -> Self {
         let (cols, rows) = termion::terminal_size().unwrap();
         let window = Window {
-            offset: 0,
+            col_offset: 0,
+            row_offset: 0,
             cursor: (0, 0).into(),
             rows,
             cols,
@@ -168,7 +201,8 @@ mod test {
         let cache = LineCache::new_from_lines(&["hello, world!", "goodbye, world!"]);
 
         let window = Window {
-            offset: 0,
+            row_offset: 0,
+            col_offset: 0,
             line_cache: cache,
             cursor: (0, 0).into(),
             rows: ROWS,
@@ -190,7 +224,8 @@ mod test {
         let cache = LineCache::new_from_lines(&["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
 
         let mut window = Window {
-            offset: 0,
+            row_offset: 0,
+            col_offset: 0,
             line_cache: cache,
             cursor: (0, 0).into(),
             rows: ROWS,
@@ -199,18 +234,18 @@ mod test {
         };
 
         window.scroll_to(Coordinate { x: 0, y: 3 });
-        assert_eq!(window.offset, 0);
+        assert_eq!(window.row_offset, 0);
 
         window.scroll_to(Coordinate { x: 0, y: 5 });
-        assert_eq!(window.offset, 1);
+        assert_eq!(window.row_offset, 1);
 
         window.scroll_to(Coordinate { x: 0, y: 7 });
-        assert_eq!(window.offset, 3);
+        assert_eq!(window.row_offset, 3);
 
         window.scroll_to(Coordinate { x: 0, y: 3 });
-        assert_eq!(window.offset, 3);
+        assert_eq!(window.row_offset, 3);
 
         window.scroll_to(Coordinate { x: 0, y: 0 });
-        assert_eq!(window.offset, 0);
+        assert_eq!(window.row_offset, 0);
     }
 }
