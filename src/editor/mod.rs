@@ -5,16 +5,20 @@ use log::*;
 use termion::event::Key;
 use xdg::BaseDirectories;
 
+use channel::{select, Receiver};
 use core::Core;
 use protocol::{ConfigChanges, Notification, ThemeSettings, Update, ViewId};
 use screen::{Color, Coordinate, Screen, Style};
 use serde_json::Value;
-use Event;
 
 mod line_cache;
 mod window;
 
 use self::window::WindowMap;
+
+/// Returned when the editor should begin teardown.
+#[derive(Debug)]
+struct ExitRequest;
 
 #[derive(Debug, PartialEq, Eq)]
 enum Mode {
@@ -169,57 +173,66 @@ impl Editor {
         }
     }
 
-    pub fn run<E>(mut self, events: E)
-    where
-        E: IntoIterator<Item = Event>,
-    {
-        for event in events {
-            match event {
-                Event::Input(Key::Char('q')) if self.mode == Mode::Normal => break,
-                Event::Input(key) => match self.mode {
-                    Mode::Normal => self.handle_normal_key(key),
-                    Mode::Insert => self.handle_insert_key(key),
+    fn handle_notification(&mut self, notification: Notification) {
+        match notification {
+            Notification::Update { view_id, update } => self.update(view_id, update),
+            Notification::DefStyle {
+                id,
+                fg_color,
+                bg_color,
+                weight,
+                underline,
+                italic,
+            } => {
+                self.screen.define_style(
+                    id,
+                    Style {
+                        fg: fg_color.map(Color::from_argb),
+                        bg: bg_color.map(Color::from_argb),
+                        bold: weight.map(|weight| weight >= 700).unwrap_or_default(),
+                        underline: underline.unwrap_or_default(),
+                        italic: italic.unwrap_or_default(),
+                    },
+                );
+            }
+            Notification::ScrollTo { view_id, line, col } => self.scroll_to(view_id, line, col),
+            Notification::ConfigChanged { changes, .. } => {
+                // TODO: Handle view_id
+                self.config_changed(changes);
+            }
+            Notification::ThemeChanged { name, theme } => self.theme_changed(name, theme),
+            Notification::PluginStarted { view_id, plugin } => {
+                info!("{} started on {:?}", plugin, view_id);
+            }
+            Notification::AvailableThemes { themes } => {
+                info!("available themes: {:?}", themes);
+            }
+            Notification::AvailablePlugins { view_id, plugins } => {
+                info!("available plugins for view {}: {:?}", view_id, plugins);
+            }
+            _ => error!("unhandled notification: {:?}", notification),
+        }
+    }
+
+    fn handle_input(&mut self, key: Key) -> Option<ExitRequest> {
+        match self.mode {
+            Mode::Normal => match key {
+                Key::Char('q') => return Some(ExitRequest),
+                _ => self.handle_normal_key(key),
+            },
+            Mode::Insert => self.handle_insert_key(key),
+        }
+
+        None
+    }
+
+    pub fn run(mut self, input: Receiver<Key>, notifications: Receiver<Notification>) {
+        loop {
+            select! {
+                recv(input, key) => if let Some(ExitRequest) = self.handle_input(key.unwrap()) {
+                    break
                 },
-                Event::CoreNotification(not) => match not {
-                    Notification::Update { view_id, update } => self.update(view_id, update),
-                    Notification::DefStyle {
-                        id,
-                        fg_color,
-                        bg_color,
-                        weight,
-                        underline,
-                        italic,
-                    } => {
-                        self.screen.define_style(
-                            id,
-                            Style {
-                                fg: fg_color.map(Color::from_argb),
-                                bg: bg_color.map(Color::from_argb),
-                                bold: weight.map(|weight| weight >= 700).unwrap_or_default(),
-                                underline: underline.unwrap_or_default(),
-                                italic: italic.unwrap_or_default(),
-                            },
-                        );
-                    }
-                    Notification::ScrollTo { view_id, line, col } => {
-                        self.scroll_to(view_id, line, col)
-                    }
-                    Notification::ConfigChanged { changes, .. } => {
-                        // TODO: Handle view_id
-                        self.config_changed(changes);
-                    }
-                    Notification::ThemeChanged { name, theme } => self.theme_changed(name, theme),
-                    Notification::PluginStarted { view_id, plugin } => {
-                        info!("{} started on {:?}", plugin, view_id);
-                    }
-                    Notification::AvailableThemes { themes } => {
-                        info!("available themes: {:?}", themes);
-                    }
-                    Notification::AvailablePlugins { view_id, plugins } => {
-                        info!("available plugins for view {}: {:?}", view_id, plugins);
-                    }
-                    _ => error!("unhandled notification: {:?}", not),
-                },
+                recv(notifications, notification) => self.handle_notification(notification.unwrap()),
             }
         }
     }

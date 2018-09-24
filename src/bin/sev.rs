@@ -1,5 +1,6 @@
 #![warn(unused_extern_crates)]
 
+extern crate crossbeam_channel as channel;
 extern crate log;
 extern crate log4rs;
 extern crate log_panics;
@@ -10,7 +11,6 @@ extern crate termion;
 use std::error::Error;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::sync::mpsc;
 use std::thread;
 
 use log::*;
@@ -20,9 +20,13 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use structopt::StructOpt;
-use termion::{cursor, event::Event as TermionEvent, input::TermRead};
+use termion::{
+    cursor,
+    event::{Event as TermionEvent, Key},
+    input::TermRead,
+};
 
-use seventeen::{Core, Editor, Event};
+use seventeen::{Core, Editor, Notification};
 
 #[derive(Debug, StructOpt)]
 struct Opt {
@@ -47,15 +51,15 @@ struct Opt {
 }
 
 fn run(opt: Opt) -> Result<(), Box<Error>> {
-    let (event_tx, event_rx) = mpsc::channel::<Event>();
+    let (input_tx, input_rx) = channel::unbounded::<Key>();
+    let (notification_tx, notification_rx) = channel::unbounded::<Notification>();
 
-    let input_event_tx = event_tx.clone();
     thread::spawn(move || -> io::Result<()> {
         let tty = termion::get_tty()?;
 
         for event in tty.events() {
             match event? {
-                TermionEvent::Key(key) => input_event_tx.send(Event::Input(key)).unwrap(),
+                TermionEvent::Key(key) => input_tx.send(key),
                 ev @ TermionEvent::Mouse(_) | ev @ TermionEvent::Unsupported(_) => {
                     warn!("unsupported event encountered: {:?}", ev);
                 }
@@ -65,10 +69,10 @@ fn run(opt: Opt) -> Result<(), Box<Error>> {
         Ok(())
     });
 
-    let core = Core::spawn(opt.core, event_tx.clone())?;
+    let core = Core::spawn(opt.core, notification_tx)?;
     let editor = Editor::new(core, opt.file);
 
-    editor.run(event_rx);
+    editor.run(input_rx, notification_rx);
 
     // We hid the cursor earlier, so we have to restore it before we exit.
     print!("{}", cursor::Show);

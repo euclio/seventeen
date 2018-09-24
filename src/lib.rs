@@ -1,5 +1,6 @@
 #![warn(unused_extern_crates)]
 
+extern crate crossbeam_channel as channel;
 extern crate failure;
 extern crate futures;
 extern crate log;
@@ -15,12 +16,6 @@ mod editor;
 mod protocol;
 mod screen;
 
-use termion::event::Key;
-
 pub use core::Core;
 pub use editor::Editor;
-
-pub enum Event {
-    Input(Key),
-    CoreNotification(protocol::Notification),
-}
+pub use protocol::Notification;

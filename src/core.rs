@@ -2,17 +2,16 @@ use std::collections::HashMap;
 use std::io::{self, prelude::*, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use channel::Sender;
 use failure::Fail;
 use futures::{self, Complete, Future};
 use log::*;
 use serde_json::{self, Value};
 
 use protocol::*;
-use Event;
 
 #[derive(Debug, Fail)]
 pub enum CoreError {
@@ -35,7 +34,7 @@ pub struct Core {
 }
 
 impl Core {
-    pub fn spawn(path: impl AsRef<Path>, event_tx: Sender<Event>) -> io::Result<Self> {
+    pub fn spawn(path: impl AsRef<Path>, event_tx: Sender<Notification>) -> io::Result<Self> {
         info!("spawning core");
 
         let mut core = Command::new(path.as_ref())
@@ -62,7 +61,7 @@ impl Core {
                 };
                 match message {
                     Message::Notification(not) => {
-                        event_tx.send(Event::CoreNotification(not)).unwrap()
+                        event_tx.send(not);
                     }
                     Message::Request { id, req } => {
                         error!(

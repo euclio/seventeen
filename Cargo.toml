@@ -6,6 +6,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 bitflags = "1"
+crossbeam-channel = "0.2"
 failure = "0.1"
 futures = "0.1"
 log = "0.4"
