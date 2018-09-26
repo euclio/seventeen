@@ -11,7 +11,7 @@ use futures::{self, Complete, Future};
 use log::*;
 use serde_json::{self, Value};
 
-use protocol::*;
+use crate::protocol::*;
 
 #[derive(Debug, Fail)]
 pub enum CoreError {

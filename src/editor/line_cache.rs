@@ -3,8 +3,8 @@ use std::slice::Chunks;
 
 use log::*;
 
-use protocol::{self, OpKind, Update};
-use screen::Coordinate;
+use crate::protocol::{self, OpKind, Update};
+use crate::screen::Coordinate;
 
 #[derive(Debug, Clone, Default)]
 pub struct LineCache {
@@ -203,8 +203,8 @@ impl LineCache {
 
 #[cfg(test)]
 mod tests {
-    use protocol::{Line, Op, OpKind, Update};
-    use screen::Coordinate;
+    use crate::protocol::{Line, Op, OpKind, Update};
+    use crate::screen::Coordinate;
 
     use super::{LineCache, StyleSpan};
 

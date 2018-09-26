@@ -5,9 +5,9 @@ use std::ops::{Index, IndexMut};
 use log::*;
 use termion;
 
-use protocol::ViewId;
-use screen::{Coordinate, Screen};
-use Core;
+use crate::protocol::ViewId;
+use crate::screen::{Coordinate, Screen};
+use crate::Core;
 
 use super::line_cache::LineCache;
 
@@ -196,7 +196,7 @@ mod test {
     use std::io::Cursor;
 
     use super::{LineCache, Screen, ViewId, Window};
-    use screen::Coordinate;
+    use crate::screen::Coordinate;
 
     #[test]
     fn window_smaller_than_cache() {

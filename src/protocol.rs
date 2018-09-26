@@ -11,7 +11,7 @@
 
 use std::path::PathBuf;
 
-use core::CoreError;
+use crate::core::CoreError;
 
 use serde::Deserialize;
 use serde_derive::{Deserialize, Serialize};

@@ -1,13 +1,5 @@
 #![warn(unused_extern_crates)]
 
-extern crate crossbeam_channel as channel;
-extern crate log;
-extern crate log4rs;
-extern crate log_panics;
-extern crate seventeen;
-extern crate structopt;
-extern crate termion;
-
 use std::error::Error;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -50,7 +42,7 @@ struct Opt {
     verbosity: u8,
 }
 
-fn run(opt: Opt) -> Result<(), Box<Error>> {
+fn run(opt: Opt) -> Result<(), Box<dyn Error>> {
     let (input_tx, input_rx) = channel::unbounded::<Key>();
     let (notification_tx, notification_rx) = channel::unbounded::<Notification>();
 
@@ -81,7 +73,7 @@ fn run(opt: Opt) -> Result<(), Box<Error>> {
     Ok(())
 }
 
-fn init_logging(opt: &Opt) -> Result<(), Box<Error>> {
+fn init_logging(opt: &Opt) -> Result<(), Box<dyn Error>> {
     let file_appender = FileAppender::builder()
         .encoder(Box::new(PatternEncoder::new("{l} {M} - {m}\n")))
         .build(&opt.log_file)?;

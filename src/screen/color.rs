@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 
 use termion::color::Rgb;
 
-use protocol;
+use crate::protocol;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Color {
@@ -26,7 +26,7 @@ impl Color {
 }
 
 impl Display for Color {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
     }
 }

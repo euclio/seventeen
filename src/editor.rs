@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
+use channel::{select, Receiver};
 use futures::Future;
 use log::*;
 use termion::event::Key;
 use xdg::BaseDirectories;
 
-use channel::{select, Receiver};
-use core::Core;
-use protocol::{ConfigChanges, Notification, ThemeSettings, Update, ViewId};
-use screen::{Color, Coordinate, Screen, Style};
+use crate::core::Core;
+use crate::protocol::{ConfigChanges, Notification, ThemeSettings, Update, ViewId};
+use crate::screen::{Color, Coordinate, Screen, Style};
 use serde_json::Value;
 
 mod line_cache;

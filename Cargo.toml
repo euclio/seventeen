@@ -1,12 +1,15 @@
+cargo-features = ["rename-dependency"]
+
 [package]
 authors = ["Andy Russell <arussell123@gmail.com>"]
 name = "seventeen"
 version = "0.1.0"
+edition = "2018"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
 bitflags = "1"
-crossbeam-channel = "0.2"
+channel = { package = "crossbeam-channel", version = "0.2" }
 failure = "0.1"
 futures = "0.1"
 log = "0.4"

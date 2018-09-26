@@ -8,7 +8,7 @@ use serde_json::Value;
 pub struct ViewId(pub String);
 
 impl Display for ViewId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
