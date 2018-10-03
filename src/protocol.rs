@@ -180,6 +180,8 @@ pub enum EditMethod {
     MoveDown,
     MoveLeft,
     MoveRight,
+    MoveWordLeft,
+    MoveWordRight,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

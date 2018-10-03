@@ -128,8 +128,24 @@ impl Editor {
         }
     }
 
+    fn move_word_left(&mut self) {
+        let active_window = self.windows.get_active_window_mut();
+        self.core.move_word_left(active_window.view_id.clone()).unwrap();
+    }
+
+    fn move_word_right(&mut self) {
+        let active_window = self.windows.get_active_window_mut();
+        self.core.move_word_right(active_window.view_id.clone()).unwrap();
+
+        // vim moves to the first letter of each word, while xi will move to the space between.
+        self.move_right();
+    }
+
     fn handle_normal_key(&mut self, key: Key) {
         match key {
+            Key::Char('b') => {
+                self.move_word_left();
+            }
             Key::Char('h') => {
                 self.move_left();
             }
@@ -145,6 +161,9 @@ impl Editor {
             }
             Key::Char('l') => {
                 self.move_right();
+            }
+            Key::Char('w') => {
+                self.move_word_right();
             }
             _ => warn!("unhandled key: {:?}", key),
         }

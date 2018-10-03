@@ -129,6 +129,20 @@ impl Core {
         })
     }
 
+    pub fn move_word_left(&mut self, view_id: ViewId) -> io::Result<()> {
+        self.notify(&Notification::Edit {
+            method: EditMethod::MoveWordLeft,
+            view_id,
+        })
+    }
+
+    pub fn move_word_right(&mut self, view_id: ViewId) -> io::Result<()> {
+        self.notify(&Notification::Edit {
+            method: EditMethod::MoveWordRight,
+            view_id,
+        })
+    }
+
     pub fn move_right(&mut self, view_id: ViewId) -> io::Result<()> {
         self.notify(&Notification::Edit {
             method: EditMethod::MoveRight,
