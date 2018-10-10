@@ -109,11 +109,11 @@ impl<W: Write> Screen<W> {
             style.italic,
         );
 
-        if id == self.styles.len() as u64 {
-            self.styles.push(style);
-        } else {
-            self.styles[id as usize] = style;
+        if id as usize >= self.styles.len() {
+            self.styles.resize(id as usize + 1, Style::default());
         }
+
+        self.styles[id as usize] = style;
     }
 
     fn style(&self, id: u64) -> &Style {
