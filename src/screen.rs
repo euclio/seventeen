@@ -55,6 +55,9 @@ where
     /// A buffer containing what should be displayed on the screen at the next refresh.
     buf: Buffer,
 
+    /// A buffer containing what is currently displayed on the screen.
+    cur_buf: Buffer,
+
     /// Styles defined by the backend.
     styles: Vec<Style>,
 
@@ -81,6 +84,7 @@ impl Screen {
     {
         let buf = Buffer::from_elem((height, width), Cell::default());
         Ok(Screen {
+            cur_buf: buf.clone(),
             buf,
             out: write,
             styles: vec![Style::default(); RESERVED_STYLES],
@@ -165,9 +169,6 @@ impl<W: Write> Screen<W> {
     pub fn refresh(&mut self) -> io::Result<()> {
         debug!("refreshing screen contents");
 
-        // FIXME: Right now this is a completely naive implementation. We redraw the entire screen
-        // on refresh, even if very little changed.
-
         if let Some(fg) = &self.text_color.0 {
             write!(self.out, "{}", Fg(Rgb(fg.r, fg.g, fg.b)))?;
         }
@@ -176,10 +177,12 @@ impl<W: Write> Screen<W> {
             write!(self.out, "{}", Bg(Rgb(bg.r, bg.g, bg.b)))?;
         }
 
-        // enumerate() doesn't seem to work here?
-        let mut i = 1;
-        for row in self.buf.genrows() {
-            write!(self.out, "{}{}", cursor::Goto(1, i), clear::CurrentLine)?;
+        for (i, row) in self.buf.genrows().into_iter().enumerate() {
+            if row == self.cur_buf.subview(Axis(0), i) {
+                continue;
+            }
+
+            write!(self.out, "{}{}", cursor::Goto(1, i as u16 + 1), clear::CurrentLine)?;
 
             let mut bold_spans = 0u32;
             let mut italic_spans = 0u32;
@@ -281,11 +284,10 @@ impl<W: Write> Screen<W> {
             if underline_spans > 0 {
                 write!(self.out, "{}", style::NoUnderline)?;
             }
-
-            i += 1;
         }
 
         self.out.flush()?;
+        self.cur_buf = self.buf.clone();
 
         Ok(())
     }
@@ -601,5 +603,23 @@ mod tests {
                 NoUnderline,
             )
         );
-}
+    }
+
+    #[test]
+    fn refresh() {
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(1, 4, buf).unwrap();
+
+        screen.write_str((0, 0).into(), "foo");
+        screen.refresh().unwrap();
+
+        screen.write_str((0, 0).into(), "foo");
+        screen.refresh().unwrap();
+
+        let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
+        assert_eq!(
+            sequences,
+            format!("{}{}foo ", Goto(1, 1), clear::CurrentLine),
+        );
+    }
 }
