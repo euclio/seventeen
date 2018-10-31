@@ -323,7 +323,7 @@ mod tests {
         clear,
         color::{Fg, Reset, Rgb},
         cursor::Goto,
-        style::{Bold, Italic, NoFaint, NoItalic},
+        style::{Bold, Invert, Italic, NoFaint, NoInvert, NoItalic, NoUnderline, Underline},
     };
 
     use super::{Color, Screen, Style};
@@ -564,4 +564,42 @@ mod tests {
             ),
         );
     }
+
+    #[test]
+    fn styles() {
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(1, 4, buf).unwrap();
+
+        screen.write_str((0, 0).into(), "foo");
+        screen.define_style(
+            2,
+            Style {
+                bold: true,
+                italic: true,
+                underline: true,
+                ..Default::default()
+            },
+        );
+        screen.apply_style(2, (0, 0).into(), 3);
+        screen.draw_cursor((0, 1).into());
+        screen.refresh().unwrap();
+
+        let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
+        assert_eq!(
+            sequences,
+            format!(
+                "{}{}{}{}{}f{}o{}o{}{}{} ",
+                Goto(1, 1),
+                clear::CurrentLine,
+                Bold,
+                Italic,
+                Underline,
+                Invert,
+                NoInvert,
+                NoFaint,
+                NoItalic,
+                NoUnderline,
+            )
+        );
+}
 }
