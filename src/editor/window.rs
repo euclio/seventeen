@@ -36,15 +36,19 @@ impl Window {
     }
 
     pub fn render<W: Write>(&self, screen: &mut Screen<W>) -> io::Result<()> {
+        let start = usize::from(self.row_offset);
+        let end = start + usize::from(self.rows);
+
+        // If there are more rows in the window than are in the cache, skip rendering it. The next
+        // cache update will contain enough rows.
+        let lines = match self.line_cache.iter_lines(start..=end) {
+            Some(lines) => lines,
+            None => return Ok(()),
+        };
+
         screen.erase();
 
-        for (i, line) in self
-            .line_cache
-            .iter_lines()
-            .skip(self.row_offset.into())
-            .enumerate()
-            .take(self.rows.into())
-        {
+        for (i, line) in lines.enumerate() {
             // There might be a newline at the end of the current line, but the terminal already
             // operates linewise.
             let text = line
@@ -197,6 +201,20 @@ mod test {
 
     use super::{LineCache, Screen, ViewId, Window};
     use crate::screen::Coordinate;
+
+    #[test]
+    fn cache_smaller_than_window() {
+        const ROWS: u16 = 5;
+        const COLS: u16 = 5;
+
+        let mut window = Window::new(ViewId("view-id-1".into()), ROWS, COLS);
+        window.line_cache = LineCache::new_from_lines(&["foo", "bar"]);
+
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(ROWS as usize, COLS as usize, buf).unwrap();
+
+        window.render(&mut screen).unwrap();
+    }
 
     #[test]
     fn window_smaller_than_cache() {

@@ -125,12 +125,6 @@ impl<W: Write> Screen<W> {
     }
 
     pub fn apply_style(&mut self, id: u64, Coordinate { y, x }: Coordinate, n: usize) {
-        trace!(
-            "applying style {} from {:?} to {:?}",
-            id,
-            (y, x),
-            (y, x + n as u16)
-        );
         let mut row = self.buf.row_mut(usize::from(y));
 
         if let Some(cell) = &mut row.get_mut(usize::from(x)) {

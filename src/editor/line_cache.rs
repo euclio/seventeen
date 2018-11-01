@@ -1,4 +1,5 @@
 use std::mem;
+use std::ops::{Bound, RangeBounds};
 use std::slice::Chunks;
 
 use log::*;
@@ -181,6 +182,8 @@ impl LineCache {
         let mut old_cache = LineCache::new();
         mem::swap(self, &mut old_cache);
 
+        let mut expected_lines = 0;
+
         for op in update.ops {
             match op.op {
                 OpKind::Ins => self.ins(op.lines.expect("attempted `ins` with no lines")),
@@ -189,13 +192,46 @@ impl LineCache {
                 OpKind::Skip => old_cache.skip(op.n),
                 _ => unimplemented!("unsupported op kind: {:?}", op),
             }
+
+            if op.op != OpKind::Skip {
+                expected_lines += op.n;
+            }
         }
+
+        debug_assert_eq!(expected_lines, self.len() as u64);
     }
 
-    pub fn iter_lines(&self) -> impl Iterator<Item = &Line> {
-        self.lines.iter()
+    /// Returns an iterator over a range of lines in the cache.
+    ///
+    /// If the range contains invalid lines, returns `None`.
+    pub fn iter_lines<R: RangeBounds<usize>>(
+        &self,
+        range: R,
+    ) -> Option<impl Iterator<Item = &Line>> {
+        let mut start = match range.start_bound() {
+            Bound::Included(bound) => *bound,
+            Bound::Excluded(bound) => *bound + 1,
+            Bound::Unbounded => 0,
+        };
+
+        let num = match range.end_bound() {
+            Bound::Included(bound) => bound - start,
+            Bound::Excluded(bound) => (bound - 1 - start),
+            Bound::Unbounded => self.len() - start,
+        };
+
+        if start < self.invalid_before as usize
+            || self.invalid_before as usize + self.lines.len() < start + num
+        {
+            return None;
+        }
+
+        start -= self.invalid_before as usize;
+
+        Some(self.lines.iter().skip(start).take(num))
     }
 
+    /// Returns the total number of lines in the cache, including invalid lines.
     pub fn len(&self) -> usize {
         self.invalid_before as usize + self.lines.len() + self.invalid_after as usize
     }
@@ -371,5 +407,41 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn iter_invalid_lines_before() {
+        let mut cache = LineCache::new();
+        cache.invalid_before = 1;
+        cache.lines = vec![
+            super::Line {
+                text: String::from("Hello, world!"),
+                ..Default::default()
+            },
+            super::Line {
+                text: String::from("Goodbye, world!"),
+                ..Default::default()
+            },
+        ];
+
+        assert!(cache.iter_lines(0..cache.len()).is_none());
+    }
+
+    #[test]
+    fn iter_invalid_lines_after() {
+        let mut cache = LineCache::new();
+        cache.invalid_after = 1;
+        cache.lines = vec![
+            super::Line {
+                text: String::from("Hello, world!"),
+                ..Default::default()
+            },
+            super::Line {
+                text: String::from("Goodbye, world!"),
+                ..Default::default()
+            },
+        ];
+
+        assert!(cache.iter_lines(0..=cache.len()).is_none());
     }
 }
