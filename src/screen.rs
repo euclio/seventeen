@@ -1,9 +1,10 @@
 use std::io::{self, Stdout, Write};
 
+use euclid::{Size2D, TypedPoint2D};
 use log::*;
 use ndarray::prelude::*;
 use termion::{
-    self, clear,
+    clear,
     color::{Bg, Fg, Reset, Rgb},
     cursor,
     raw::{IntoRawMode, RawTerminal},
@@ -29,18 +30,10 @@ pub struct Style {
     pub italic: bool,
 }
 
-/// A position in the terminal, zero-indexed.
-#[derive(Debug, Clone, Copy)]
-pub struct Coordinate {
-    pub x: u16,
-    pub y: u16,
-}
+pub struct ScreenSpace;
 
-impl From<(u16, u16)> for Coordinate {
-    fn from((y, x): (u16, u16)) -> Self {
-        Coordinate { y, x }
-    }
-}
+/// A coordinate on the screen.
+pub type Coordinate = TypedPoint2D<usize, ScreenSpace>;
 
 /// An ncurses-like abstraction over the terminal screen.
 ///
@@ -68,21 +61,19 @@ where
 }
 
 impl Screen {
-    pub fn new() -> io::Result<Self> {
-        let (width, height) = termion::terminal_size()?;
-
+    pub fn new(size: Size2D<usize>) -> io::Result<Self> {
         let mut screen = AlternateScreen::from(io::stdout().into_raw_mode()?);
         write!(screen, "{}{}", cursor::Hide, clear::All)?;
         screen.flush()?;
 
-        Self::new_from_write(usize::from(height), usize::from(width), screen)
+        Self::new_from_write(size, screen)
     }
 
-    pub fn new_from_write<W>(height: usize, width: usize, write: W) -> io::Result<Screen<W>>
+    pub fn new_from_write<W>(size: Size2D<usize>, write: W) -> io::Result<Screen<W>>
     where
         W: Write,
     {
-        let buf = Buffer::from_elem((height, width), Cell::default());
+        let buf = Buffer::from_elem((size.height, size.width), Cell::default());
         Ok(Screen {
             cur_buf: buf.clone(),
             buf,
@@ -124,18 +115,18 @@ impl<W: Write> Screen<W> {
         &self.styles[id as usize]
     }
 
-    pub fn apply_style(&mut self, id: u64, Coordinate { y, x }: Coordinate, n: usize) {
-        let mut row = self.buf.row_mut(usize::from(y));
+    pub fn apply_style(&mut self, Coordinate { y, x, .. }: Coordinate, id: u64, n: usize) {
+        let mut row = self.buf.row_mut(y);
 
-        if let Some(cell) = &mut row.get_mut(usize::from(x)) {
+        if let Some(cell) = &mut row.get_mut(x) {
             cell.span_start = Some(id);
         }
-        if let Some(cell) = &mut row.get_mut((u64::from(x) + n as u64) as usize) {
+        if let Some(cell) = &mut row.get_mut(x + n) {
             cell.span_end = Some(id);
         }
     }
 
-    pub fn write_str(&mut self, Coordinate { y, x }: Coordinate, s: &str) {
+    pub fn write_str(&mut self, Coordinate { x, y, .. }: Coordinate, s: &str) {
         let mut row = self.buf.row_mut(usize::from(y));
 
         for (i, c) in s.chars().enumerate() {
@@ -150,7 +141,7 @@ impl<W: Write> Screen<W> {
         self.text_color = (fg, bg);
     }
 
-    pub fn draw_cursor(&mut self, Coordinate { y, x }: Coordinate) {
+    pub fn draw_cursor(&mut self, Coordinate { x, y, .. }: Coordinate) {
         self.buf.row_mut(usize::from(y))[usize::from(x)].is_reverse = true;
     }
 
@@ -176,7 +167,12 @@ impl<W: Write> Screen<W> {
                 continue;
             }
 
-            write!(self.out, "{}{}", cursor::Goto(1, i as u16 + 1), clear::CurrentLine)?;
+            write!(
+                self.out,
+                "{}{}",
+                cursor::Goto(1, i as u16 + 1),
+                clear::CurrentLine
+            )?;
 
             let mut bold_spans = 0u32;
             let mut italic_spans = 0u32;
@@ -315,6 +311,7 @@ impl Default for Cell {
 mod tests {
     use std::io::Cursor;
 
+    use euclid::Size2D;
     use termion::{
         clear,
         color::{Fg, Reset, Rgb},
@@ -322,14 +319,14 @@ mod tests {
         style::{Bold, Invert, Italic, NoFaint, NoInvert, NoItalic, NoUnderline, Underline},
     };
 
-    use super::{Color, Screen, Style};
+    use super::{Color, Coordinate, Screen, Style};
 
     #[test]
     fn write_str() {
         let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(5, 15, buf).unwrap();
+        let mut screen = Screen::new_from_write(Size2D::new(15, 5), buf).unwrap();
 
-        screen.write_str((0, 0).into(), "Hello, world!");
+        screen.write_str(Coordinate::new(0, 0), "Hello, world!");
 
         assert_eq!(
             screen
@@ -347,9 +344,9 @@ mod tests {
     #[test]
     fn simple_span() {
         let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(1, 15, buf).unwrap();
+        let mut screen = Screen::new_from_write(Size2D::new(15, 1), buf).unwrap();
 
-        screen.write_str((0, 0).into(), "Hello, world!");
+        screen.write_str(Coordinate::new(0, 0), "Hello, world!");
         screen.define_style(
             1,
             Style {
@@ -357,7 +354,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        screen.apply_style(1, (0, 0).into(), 5);
+        screen.apply_style(Coordinate::new(0, 0), 1, 5);
         screen.refresh().unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
@@ -376,9 +373,9 @@ mod tests {
     #[test]
     fn end_to_end_spans() {
         let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(1, 15, buf).unwrap();
+        let mut screen = Screen::new_from_write(Size2D::new(15, 1), buf).unwrap();
 
-        screen.write_str((0, 0).into(), "bolditalic");
+        screen.write_str(Coordinate::new(0, 0), "bolditalic");
         screen.define_style(
             1,
             Style {
@@ -393,8 +390,8 @@ mod tests {
                 ..Default::default()
             },
         );
-        screen.apply_style(1, (0, 0).into(), 4);
-        screen.apply_style(2, (0, 4).into(), 6);
+        screen.apply_style(Coordinate::new(0, 0), 1, 4);
+        screen.apply_style(Coordinate::new(4, 0), 2, 6);
         screen.refresh().unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
@@ -415,9 +412,9 @@ mod tests {
     #[test]
     fn disjoint_spans() {
         let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(1, 15, buf).unwrap();
+        let mut screen = Screen::new_from_write(Size2D::new(15, 1), buf).unwrap();
 
-        screen.write_str((0, 0).into(), "int main() {}");
+        screen.write_str(Coordinate::new(0, 0), "int main() {}");
         screen.define_style(
             2,
             Style {
@@ -439,9 +436,9 @@ mod tests {
                 ..Default::default()
             },
         );
-        screen.apply_style(2, (0, 0).into(), 3);
-        screen.apply_style(3, (0, 3).into(), 1);
-        screen.apply_style(4, (0, 4).into(), 4);
+        screen.apply_style(Coordinate::new(0, 0), 2, 3);
+        screen.apply_style(Coordinate::new(3, 0), 3, 1);
+        screen.apply_style(Coordinate::new(4, 0), 4, 4);
         screen.refresh().unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
@@ -462,10 +459,10 @@ mod tests {
     #[test]
     fn span_out_of_bounds() {
         let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(3, 10, buf).unwrap();
-        screen.write_str((0, 0).into(), "foobarbaz");
-        screen.write_str((1, 0).into(), "quux quux");
-        screen.write_str((2, 0).into(), "xyzzyxyzzy");
+        let mut screen = Screen::new_from_write(Size2D::new(10, 3), buf).unwrap();
+        screen.write_str(Coordinate::new(0, 0).into(), "foobarbaz");
+        screen.write_str(Coordinate::new(0, 1).into(), "quux quux");
+        screen.write_str(Coordinate::new(0, 2).into(), "xyzzyxyzzy");
         screen.define_style(
             2,
             Style {
@@ -488,9 +485,9 @@ mod tests {
             },
         );
 
-        screen.apply_style(2, (0, 0).into(), 20);
-        screen.apply_style(3, (1, 5).into(), 10);
-        screen.apply_style(4, (2, 20).into(), 5);
+        screen.apply_style(Coordinate::new(0, 0), 2, 20);
+        screen.apply_style(Coordinate::new(5, 1), 3, 10);
+        screen.apply_style(Coordinate::new(20, 2), 4, 5);
         screen.refresh().unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
@@ -498,8 +495,8 @@ mod tests {
             sequences,
             format!(
                 "{}{}{}foobarbaz {}\
-                {}{}quux {}quux {}\
-                {}{}xyzzyxyzzy",
+                 {}{}quux {}quux {}\
+                 {}{}xyzzyxyzzy",
                 Goto(1, 1),
                 clear::CurrentLine,
                 Bold,
@@ -517,9 +514,9 @@ mod tests {
     #[test]
     fn color_change() {
         let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(1, 15, buf).unwrap();
+        let mut screen = Screen::new_from_write(Size2D::new(15, 1), buf).unwrap();
 
-        screen.write_str((0, 0).into(), "redgreenblue");
+        screen.write_str(Coordinate::new(0, 0), "redgreenblue");
         screen.define_style(
             2,
             Style {
@@ -541,9 +538,9 @@ mod tests {
                 ..Default::default()
             },
         );
-        screen.apply_style(2, (0, 0).into(), 3);
-        screen.apply_style(3, (0, 3).into(), 5);
-        screen.apply_style(4, (0, 8).into(), 4);
+        screen.apply_style(Coordinate::new(0, 0), 2, 3);
+        screen.apply_style(Coordinate::new(3, 0), 3, 5);
+        screen.apply_style(Coordinate::new(8, 0), 4, 4);
         screen.refresh().unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
@@ -564,9 +561,9 @@ mod tests {
     #[test]
     fn styles() {
         let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(1, 4, buf).unwrap();
+        let mut screen = Screen::new_from_write(Size2D::new(4, 1), buf).unwrap();
 
-        screen.write_str((0, 0).into(), "foo");
+        screen.write_str(Coordinate::new(0, 0), "foo");
         screen.define_style(
             2,
             Style {
@@ -576,8 +573,8 @@ mod tests {
                 ..Default::default()
             },
         );
-        screen.apply_style(2, (0, 0).into(), 3);
-        screen.draw_cursor((0, 1).into());
+        screen.apply_style(Coordinate::new(0, 0), 2, 3);
+        screen.draw_cursor(Coordinate::new(1, 0));
         screen.refresh().unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
@@ -602,12 +599,12 @@ mod tests {
     #[test]
     fn refresh() {
         let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(1, 4, buf).unwrap();
+        let mut screen = Screen::new_from_write(Size2D::new(4, 1), buf).unwrap();
 
-        screen.write_str((0, 0).into(), "foo");
+        screen.write_str(Coordinate::new(0, 0), "foo");
         screen.refresh().unwrap();
 
-        screen.write_str((0, 0).into(), "foo");
+        screen.write_str(Coordinate::new(0, 0), "foo");
         screen.refresh().unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();

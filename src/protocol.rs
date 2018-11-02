@@ -158,8 +158,8 @@ pub enum Notification {
     // Backend -> Frontend
     ScrollTo {
         view_id: ViewId,
-        line: u64,
-        col: u64,
+        line: usize,
+        col: usize,
     },
 
     // Backend -> Frontend

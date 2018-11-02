@@ -17,7 +17,7 @@ pub struct LineCache {
 #[derive(Debug, Clone, Default)]
 pub struct Line {
     pub(crate) text: String,
-    pub(crate) cursors: Option<Vec<u64>>,
+    pub(crate) cursors: Option<Vec<usize>>,
     styles: Vec<i64>,
 }
 
@@ -30,8 +30,10 @@ pub struct StyleSpan {
 
 impl Line {
     /// Returns the offset of each cursor within the line.
-    pub fn iter_cursors<'a>(&'a self) -> impl Iterator<Item = u64> + 'a {
-        self.cursors.iter().flat_map(|cursors| cursors.iter().cloned())
+    pub fn iter_cursors<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
+        self.cursors
+            .iter()
+            .flat_map(|cursors| cursors.iter().cloned())
     }
 
     pub fn iter_style_spans<'a>(&'a self) -> impl Iterator<Item = StyleSpan> + 'a {
@@ -368,8 +370,8 @@ mod tests {
             ..Default::default()
         }];
 
-        assert!(cache.is_eol(&Coordinate { y: 0, x: 13 }));
-        assert!(!cache.is_eol(&Coordinate { y: 0, x: 10 }));
+        assert!(cache.is_eol(&Coordinate::new(13, 0)));
+        assert!(!cache.is_eol(&Coordinate::new(10, 0)));
     }
 
     #[test]

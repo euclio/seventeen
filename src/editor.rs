@@ -53,12 +53,13 @@ impl Editor {
             .unwrap();
 
         let (cols, rows) = termion::terminal_size().unwrap();
-        let layout = Layout::new(Size2D::new(usize::from(cols), usize::from(rows)));
+        let screen_size = Size2D::new(usize::from(cols), usize::from(rows));
+        let layout = Layout::new(screen_size);
 
         let mut editor = Self {
             core,
             layout,
-            screen: Screen::new().unwrap(),
+            screen: Screen::new(screen_size).unwrap(),
             active_view: None,
             mode: Mode::Normal,
             windows: HashMap::new(),
@@ -92,17 +93,11 @@ impl Editor {
         self.screen.refresh().unwrap();
     }
 
-    fn scroll_to(&mut self, view_id: ViewId, line: u64, col: u64) {
+    fn scroll_to(&mut self, view_id: ViewId, line: usize, col: usize) {
         let window = self.windows.get_mut(&view_id).unwrap();
         let bounds = self.layout.of_view(&view_id);
 
-        window.scroll_to(
-            &bounds,
-            Coordinate {
-                y: line as u16,
-                x: col as u16,
-            },
-        );
+        window.scroll_to(&bounds, Coordinate::new(col, line));
         window.render(&bounds, &mut self.screen).unwrap();
         self.screen.refresh().unwrap();
     }
