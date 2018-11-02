@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+use std::io;
 use std::path::PathBuf;
 
 use channel::{select, Receiver};
+use euclid::Size2D;
 use futures::Future;
 use log::*;
 use termion::event::Key;
@@ -11,10 +14,12 @@ use crate::protocol::{ConfigChanges, Notification, ThemeSettings, Update, ViewId
 use crate::screen::{Color, Coordinate, Screen, Style};
 use serde_json::Value;
 
+mod layout;
 mod line_cache;
 mod window;
 
-use self::window::WindowMap;
+use self::layout::Layout;
+use self::window::Window;
 
 /// Returned when the editor should begin teardown.
 #[derive(Debug)]
@@ -34,9 +39,11 @@ impl Default for Mode {
 
 pub struct Editor {
     core: Core,
-    windows: WindowMap,
     mode: Mode,
+    layout: Layout,
     screen: Screen,
+    active_view: Option<ViewId>,
+    windows: HashMap<ViewId, Window>,
 }
 
 impl Editor {
@@ -44,33 +51,59 @@ impl Editor {
         let xdg_dirs = BaseDirectories::with_prefix("xi").unwrap();
         core.client_started(Some(xdg_dirs.get_config_home()))
             .unwrap();
-        let view_id = core.new_view(initial_path).wait().unwrap();
-        let windows = WindowMap::new(&mut core, view_id);
 
-        Self {
+        let (cols, rows) = termion::terminal_size().unwrap();
+        let layout = Layout::new(Size2D::new(usize::from(cols), usize::from(rows)));
+
+        let mut editor = Self {
             core,
-            windows,
-            mode: Mode::Normal,
+            layout,
             screen: Screen::new().unwrap(),
-        }
+            active_view: None,
+            mode: Mode::Normal,
+            windows: HashMap::new(),
+        };
+
+        editor.new_view(initial_path).unwrap();
+
+        editor
+    }
+
+    fn new_view<P: Into<PathBuf>>(&mut self, path: Option<P>) -> io::Result<()> {
+        let view_id = self.core.new_view(path).wait().unwrap();
+        let bounds = self.layout.add_view(&view_id);
+
+        self.core.scroll(
+            view_id.clone(),
+            (bounds.min_y() as u16, bounds.max_y() as u16),
+        )?;
+        self.windows.insert(view_id.clone(), Window::new());
+        self.active_view = Some(view_id);
+
+        Ok(())
     }
 
     fn update(&mut self, view_id: ViewId, update: Update) {
-        let window = &mut self.windows[&view_id];
-
+        let window = self.windows.get_mut(&view_id).unwrap();
         window.line_cache.update(update);
-        window.render(&mut self.screen).unwrap();
+        window
+            .render(&self.layout.of_view(&view_id), &mut self.screen)
+            .unwrap();
         self.screen.refresh().unwrap();
     }
 
     fn scroll_to(&mut self, view_id: ViewId, line: u64, col: u64) {
-        let active_window = self.windows.get_active_window_mut();
-        debug_assert!(view_id == active_window.view_id);
-        active_window.scroll_to(Coordinate {
-            y: line as u16,
-            x: col as u16,
-        });
-        active_window.render(&mut self.screen).unwrap();
+        let window = self.windows.get_mut(&view_id).unwrap();
+        let bounds = self.layout.of_view(&view_id);
+
+        window.scroll_to(
+            &bounds,
+            Coordinate {
+                y: line as u16,
+                x: col as u16,
+            },
+        );
+        window.render(&bounds, &mut self.screen).unwrap();
         self.screen.refresh().unwrap();
     }
 
@@ -91,54 +124,61 @@ impl Editor {
     }
 
     fn move_up(&mut self) {
-        let active_window = self.windows.get_active_window_mut();
+        if let Some(id) = &self.active_view {
+            // If the `move_up` RPC is sent while the cursor is in the top row, the cursor will move to
+            // the beginning of the line. vim will keep the cursor at the same position.
+            if self.windows[&id].cursor.y == 0 {
+                return;
+            }
 
-        // If the `move_up` RPC is sent while the cursor is in the top row, the cursor will move to
-        // the beginning of the line. vim will keep the cursor at the same position.
-        if active_window.cursor.y == 0 {
-            return;
+            self.core.move_up(id.clone()).unwrap();
         }
-
-        self.core.move_up(active_window.view_id.clone()).unwrap();
     }
 
     fn move_down(&mut self) {
-        let active_window = self.windows.get_active_window_mut();
+        if let Some(id) = &self.active_view {
+            let window = &self.windows[&id];
 
-        // If the `move_down` RPC is sent while the cursor is on the bottom row, the cursor will
-        // move to the end of the line. vim will keep the cursor at the same position.
-        if (active_window.cursor.y as usize) >= active_window.buffer_len() {
-            return;
+            // If the `move_down` RPC is sent while the cursor is on the bottom row, the cursor will
+            // move to the end of the line. vim will keep the cursor at the same position.
+            if (window.cursor.y as usize) >= window.buffer_len() {
+                return;
+            }
+
+            self.core.move_down(id.clone()).unwrap();
         }
-
-        self.core.move_down(active_window.view_id.clone()).unwrap();
     }
 
     fn move_left(&mut self) {
-        let active_window = self.windows.get_active_window_mut();
-        if active_window.cursor.x > 0 {
-            self.core.move_left(active_window.view_id.clone()).unwrap();
+        if let Some(id) = &self.active_view {
+            if self.windows[&id].cursor.x > 0 {
+                self.core.move_left(id.clone()).unwrap();
+            }
         }
     }
 
     fn move_right(&mut self) {
-        let active_window = self.windows.get_active_window_mut();
-        if !active_window.line_cache.is_eol(&active_window.cursor) {
-            self.core.move_right(active_window.view_id.clone()).unwrap();
+        if let Some(id) = &self.active_view {
+            let window = &self.windows[id];
+            if !window.line_cache.is_eol(&window.cursor) {
+                self.core.move_right(id.clone()).unwrap();
+            }
         }
     }
 
     fn move_word_left(&mut self) {
-        let active_window = self.windows.get_active_window_mut();
-        self.core.move_word_left(active_window.view_id.clone()).unwrap();
+        if let Some(id) = &self.active_view {
+            self.core.move_word_left(id.clone()).unwrap();
+        }
     }
 
     fn move_word_right(&mut self) {
-        let active_window = self.windows.get_active_window_mut();
-        self.core.move_word_right(active_window.view_id.clone()).unwrap();
+        if let Some(id) = &self.active_view {
+            self.core.move_word_right(id.clone()).unwrap();
 
-        // vim moves to the first letter of each word, while xi will move to the space between.
-        self.move_right();
+            // vim moves to the first letter of each word, while xi will move to the space between.
+            self.move_right();
+        }
     }
 
     fn handle_normal_key(&mut self, key: Key) {
@@ -172,17 +212,14 @@ impl Editor {
     fn handle_insert_key(&mut self, key: Key) {
         match key {
             Key::Char(c) => {
-                self.core
-                    .insert(
-                        self.windows.get_active_window_mut().view_id.clone(),
-                        c.to_string(),
-                    )
-                    .unwrap();
+                if let Some(id) = &self.active_view {
+                    self.core.insert(id.clone(), c.to_string()).unwrap();
+                }
             }
             Key::Backspace => {
-                self.core
-                    .delete_backward(self.windows.get_active_window_mut().view_id.clone())
-                    .unwrap();
+                if let Some(id) = &self.active_view {
+                    self.core.delete_backward(id.clone()).unwrap();
+                }
             }
             Key::Esc => {
                 info!("entering normal mode");
