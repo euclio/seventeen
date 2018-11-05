@@ -41,6 +41,10 @@ impl Window {
         for (i, line) in lines.enumerate() {
             // There might be a newline at the end of the current line, but the terminal already
             // operates linewise.
+            //
+            // TODO: We also need to convert tabs to spaces here, because terminals don't really
+            // play nice with tabs (for instance, we can't draw a cursor over a tab). However, it's
+            // more subtle than just a replace, as we'll need to update the style offsets as well.
             let text = line
                 .text
                 .trim_right_matches('\n')
