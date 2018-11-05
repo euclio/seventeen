@@ -14,10 +14,12 @@ use crate::protocol::{ConfigChanges, Notification, ThemeSettings, Update, ViewId
 use crate::screen::{Color, Coordinate, Screen, Style};
 use serde_json::Value;
 
+mod command_line;
 mod layout;
 mod line_cache;
 mod window;
 
+use self::command_line::CommandLine;
 use self::layout::Layout;
 use self::window::Window;
 
@@ -25,10 +27,11 @@ use self::window::Window;
 #[derive(Debug)]
 struct ExitRequest;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 enum Mode {
     Normal,
     Insert,
+    Command(CommandLine),
 }
 
 impl Default for Mode {
@@ -200,6 +203,12 @@ impl Editor {
             Key::Char('w') => {
                 self.move_word_right();
             }
+            Key::Char(':') => {
+                info!("entering command mode");
+                let line = CommandLine::new();
+                line.render(self.layout.of_command_line(), &mut self.screen);
+                self.mode = Mode::Command(line);
+            }
             _ => warn!("unhandled key: {:?}", key),
         }
     }
@@ -267,11 +276,37 @@ impl Editor {
 
     fn handle_input(&mut self, key: Key) -> Option<ExitRequest> {
         match self.mode {
-            Mode::Normal => match key {
-                Key::Char('q') => return Some(ExitRequest),
-                _ => self.handle_normal_key(key),
-            },
+            Mode::Normal => self.handle_normal_key(key),
             Mode::Insert => self.handle_insert_key(key),
+            Mode::Command(ref mut line) => {
+                match key {
+                    Key::Char('\n') | Key::Esc => {
+                        if key == Key::Char('\n') {
+                            // TODO: do some parsing here
+                            match line.command() {
+                                "q" => {
+                                    return Some(ExitRequest);
+                                }
+                                _ => ()
+                            }
+                        }
+
+                        self.screen.erase_line(self.layout.of_command_line().origin.y);
+                        self.screen.refresh().unwrap();
+                        info!("entering normal mode");
+                        self.mode = Mode::Normal;
+                    }
+                    Key::Char(c) => {
+                        line.insert(c);
+                        line.render(self.layout.of_command_line(), &mut self.screen);
+                    }
+                    Key::Backspace => {
+                        line.delete();
+                        line.render(self.layout.of_command_line(), &mut self.screen);
+                    }
+                    _ => warn!("unhandled key: {:?}", key),
+                }
+            }
         }
 
         None

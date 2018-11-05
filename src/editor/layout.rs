@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use euclid::{Rect, Size2D};
+use euclid::{Point2D, Rect, Size2D};
 use log::*;
 
 use crate::protocol::ViewId;
@@ -25,7 +25,8 @@ impl Layout {
         }
 
         // TODO: implement some fancy placement logic here.
-        let rect = Rect::from_size(self.screen);
+        let rect = Rect::from_size(Size2D { height: self.screen.height - 1, ..self.screen });
+
         self.windows.insert(view_id.clone(), rect);
 
         info!("created window at {:?}", rect);
@@ -40,5 +41,9 @@ impl Layout {
     /// Panics if the view id is not contained in the layout.
     pub fn of_view(&self, view_id: &ViewId) -> Rect<usize> {
         self.windows[view_id]
+    }
+
+    pub fn of_command_line(&self) -> Rect<usize> {
+        Rect::new(Point2D::new(0, self.screen.height - 1), Size2D::new(self.screen.width, 1))
     }
 }

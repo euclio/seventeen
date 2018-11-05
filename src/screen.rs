@@ -1,6 +1,6 @@
 use std::io::{self, Stdout, Write};
 
-use euclid::{Size2D, TypedPoint2D};
+use euclid::{Point2D, Size2D};
 use log::*;
 use ndarray::prelude::*;
 use termion::{
@@ -30,10 +30,8 @@ pub struct Style {
     pub italic: bool,
 }
 
-pub struct ScreenSpace;
-
 /// A coordinate on the screen.
-pub type Coordinate = TypedPoint2D<usize, ScreenSpace>;
+pub type Coordinate = Point2D<usize>;
 
 /// An ncurses-like abstraction over the terminal screen.
 ///
@@ -127,10 +125,10 @@ impl<W: Write> Screen<W> {
     }
 
     pub fn write_str(&mut self, Coordinate { x, y, .. }: Coordinate, s: &str) {
-        let mut row = self.buf.row_mut(usize::from(y));
+        let mut row = self.buf.row_mut(y);
 
         for (i, c) in s.chars().enumerate() {
-            row[usize::from(x) + i] = Cell {
+            row[x + i] = Cell {
                 c,
                 ..Default::default()
             };
@@ -148,6 +146,10 @@ impl<W: Write> Screen<W> {
     /// Erase all characters from the screen.
     pub fn erase(&mut self) {
         self.buf.fill(Cell::default());
+    }
+
+    pub fn erase_line(&mut self, line: usize) {
+        self.buf.row_mut(line).fill(Cell::default());
     }
 
     /// Push the contents of the internal buffer to the screen.
