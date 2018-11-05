@@ -29,8 +29,8 @@ impl Window {
         let start = self.offsets.top;
         let end = start + bounds.size.height;
 
-        // If there are more rows in the window than are in the cache, skip rendering it. The next
-        // cache update will contain enough rows.
+        // If we're attempting to iterate over invalid lines, then skip rendering. The next cache
+        // update will send us the valid lines.
         let lines = match self.line_cache.iter_lines(start..=end) {
             Some(lines) => lines,
             None => return Ok(()),

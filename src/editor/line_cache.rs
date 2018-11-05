@@ -14,7 +14,7 @@ pub struct LineCache {
     invalid_after: u64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Line {
     pub(crate) text: String,
     pub(crate) cursors: Option<Vec<usize>>,
@@ -205,8 +205,11 @@ impl LineCache {
 
     /// Returns an iterator over a range of lines in the cache.
     ///
-    /// If the range contains invalid lines, returns `None`.
-    pub fn iter_lines<R: RangeBounds<usize>>(
+    /// If the range contains any invalid lines, returns `None`.
+    ///
+    /// The range may be greater than the bounds of the cache. In that case, a valid iterator
+    /// will be returned, but its length will be smaller than the range.
+    pub fn iter_lines<R: RangeBounds<usize> + ::std::fmt::Debug>(
         &self,
         range: R,
     ) -> Option<impl Iterator<Item = &Line>> {
@@ -222,9 +225,10 @@ impl LineCache {
             Bound::Unbounded => self.len() - start,
         };
 
-        if start < self.invalid_before as usize
-            || self.invalid_before as usize + self.lines.len() < start + num
-        {
+        let contains_invalid_before = start < self.invalid_before as usize;
+        let contains_invalid_after =
+            self.invalid_after > 0 && self.len() - (self.invalid_after as usize) < start + num;
+        if contains_invalid_before || contains_invalid_after {
             return None;
         }
 
@@ -408,6 +412,26 @@ mod tests {
                     id: 2,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn iter_short_cache() {
+        let mut cache = LineCache::new();
+        cache.lines = vec![
+            super::Line {
+                text: String::from("Hello, world!"),
+                ..Default::default()
+            },
+        ];
+
+        let lines = cache.iter_lines(0..=20).unwrap().collect::<Vec<_>>();
+        assert_eq!(
+            lines,
+            vec![&super::Line {
+                text: String::from("Hello, world!"),
+                ..Default::default()
+            }]
         );
     }
 
