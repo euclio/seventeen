@@ -1,5 +1,6 @@
 use euclid::Rect;
 
+use super::styles::Styles;
 use crate::screen::{Coordinate, Screen};
 
 #[derive(Debug, Default)]
@@ -24,7 +25,7 @@ impl CommandLine {
         &self.buf
     }
 
-    pub fn render(&self, bounds: Rect<usize>, screen: &mut Screen) {
+    pub fn render(&self, styles: &Styles, bounds: Rect<usize>, screen: &mut Screen) {
         let mut line = String::from(":");
         line.push_str(&self.buf);
         screen.erase_line(bounds.origin.y);
@@ -33,6 +34,6 @@ impl CommandLine {
             x: bounds.origin.x + line.chars().count(),
             ..bounds.origin
         });
-        screen.refresh().unwrap();
+        screen.refresh(&styles).unwrap();
     }
 }

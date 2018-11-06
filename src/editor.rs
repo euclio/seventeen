@@ -11,16 +11,18 @@ use xdg::BaseDirectories;
 
 use crate::core::Core;
 use crate::protocol::{ConfigChanges, Notification, ThemeSettings, Update, ViewId};
-use crate::screen::{Color, Coordinate, Screen, Style};
+use crate::screen::{Color, Coordinate, Screen};
 use serde_json::Value;
 
 mod command_line;
 mod layout;
 mod line_cache;
+pub(crate) mod styles;
 mod window;
 
 use self::command_line::CommandLine;
 use self::layout::Layout;
+use self::styles::{Style, Styles};
 use self::window::Window;
 
 /// Returned when the editor should begin teardown.
@@ -47,6 +49,7 @@ pub struct Editor {
     screen: Screen,
     active_view: Option<ViewId>,
     windows: HashMap<ViewId, Window>,
+    styles: Styles,
 }
 
 impl Editor {
@@ -66,6 +69,7 @@ impl Editor {
             active_view: None,
             mode: Mode::Normal,
             windows: HashMap::new(),
+            styles: Styles::new(),
         };
 
         editor.new_view(initial_path).unwrap();
@@ -93,7 +97,7 @@ impl Editor {
         window
             .render(&self.layout.of_view(&view_id), &mut self.screen)
             .unwrap();
-        self.screen.refresh().unwrap();
+        self.screen.refresh(&self.styles).unwrap();
     }
 
     fn scroll_to(&mut self, view_id: ViewId, line: usize, col: usize) {
@@ -102,7 +106,7 @@ impl Editor {
 
         window.scroll_to(&bounds, Coordinate::new(col, line));
         window.render(&bounds, &mut self.screen).unwrap();
-        self.screen.refresh().unwrap();
+        self.screen.refresh(&self.styles).unwrap();
     }
 
     fn config_changed(&mut self, changes: ConfigChanges) {
@@ -115,10 +119,8 @@ impl Editor {
 
     fn theme_changed(&mut self, name: String, theme: ThemeSettings) {
         info!("theme changed to {}", name);
-        self.screen.set_text_color(
-            theme.foreground.map(Into::into),
-            theme.background.map(Into::into),
-        );
+        self.styles.fg = theme.foreground.map(Into::into);
+        self.styles.bg = theme.background.map(Into::into);
     }
 
     fn move_up(&mut self) {
@@ -206,7 +208,11 @@ impl Editor {
             Key::Char(':') => {
                 info!("entering command mode");
                 let line = CommandLine::new();
-                line.render(self.layout.of_command_line(), &mut self.screen);
+                line.render(
+                    &self.styles,
+                    self.layout.of_command_line(),
+                    &mut self.screen,
+                );
                 self.mode = Mode::Command(line);
             }
             _ => warn!("unhandled key: {:?}", key),
@@ -244,7 +250,7 @@ impl Editor {
                 underline,
                 italic,
             } => {
-                self.screen.define_style(
+                self.styles.define(
                     id,
                     Style {
                         fg: fg_color.map(Color::from_argb),
@@ -287,22 +293,31 @@ impl Editor {
                                 "q" => {
                                     return Some(ExitRequest);
                                 }
-                                _ => ()
+                                _ => (),
                             }
                         }
 
-                        self.screen.erase_line(self.layout.of_command_line().origin.y);
-                        self.screen.refresh().unwrap();
+                        self.screen
+                            .erase_line(self.layout.of_command_line().origin.y);
+                        self.screen.refresh(&self.styles).unwrap();
                         info!("entering normal mode");
                         self.mode = Mode::Normal;
                     }
                     Key::Char(c) => {
                         line.insert(c);
-                        line.render(self.layout.of_command_line(), &mut self.screen);
+                        line.render(
+                            &self.styles,
+                            self.layout.of_command_line(),
+                            &mut self.screen,
+                        );
                     }
                     Key::Backspace => {
                         line.delete();
-                        line.render(self.layout.of_command_line(), &mut self.screen);
+                        line.render(
+                            &self.styles,
+                            self.layout.of_command_line(),
+                            &mut self.screen,
+                        );
                     }
                     _ => warn!("unhandled key: {:?}", key),
                 }

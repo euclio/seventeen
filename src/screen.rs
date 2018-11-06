@@ -12,23 +12,13 @@ use termion::{
     style,
 };
 
+use crate::editor::styles::{Style, Styles};
+
 mod color;
 
 pub use self::color::Color;
 
-/// The number of style IDs that are reserved by the backend.
-const RESERVED_STYLES: usize = 2;
-
 type Buffer = Array2<Cell>;
-
-#[derive(Debug, Default, Clone)]
-pub struct Style {
-    pub fg: Option<Color>,
-    pub bg: Option<Color>,
-    pub bold: bool,
-    pub underline: bool,
-    pub italic: bool,
-}
 
 /// A coordinate on the screen.
 pub type Coordinate = Point2D<usize>;
@@ -48,12 +38,6 @@ where
 
     /// A buffer containing what is currently displayed on the screen.
     cur_buf: Buffer,
-
-    /// Styles defined by the backend.
-    styles: Vec<Style>,
-
-    /// Foreground and background color for text.
-    text_color: (Option<Color>, Option<Color>),
 
     out: W,
 }
@@ -76,43 +60,11 @@ impl Screen {
             cur_buf: buf.clone(),
             buf,
             out: write,
-            styles: vec![Style::default(); RESERVED_STYLES],
-            text_color: (None, None),
         })
     }
 }
 
 impl<W: Write> Screen<W> {
-    pub fn define_style(&mut self, id: u64, style: Style) {
-        info!(
-            "defined style {}: fg={} bg={} bold={} underline={} italic={}",
-            id,
-            style
-                .fg
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| String::from("none")),
-            style
-                .bg
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| String::from("none")),
-            style.bold,
-            style.underline,
-            style.italic,
-        );
-
-        if id as usize >= self.styles.len() {
-            self.styles.resize(id as usize + 1, Style::default());
-        }
-
-        self.styles[id as usize] = style;
-    }
-
-    fn style(&self, id: u64) -> &Style {
-        &self.styles[id as usize]
-    }
-
     pub fn apply_style(&mut self, Coordinate { y, x, .. }: Coordinate, id: u64, n: usize) {
         let mut row = self.buf.row_mut(y);
 
@@ -135,10 +87,6 @@ impl<W: Write> Screen<W> {
         }
     }
 
-    pub fn set_text_color(&mut self, fg: Option<Color>, bg: Option<Color>) {
-        self.text_color = (fg, bg);
-    }
-
     pub fn draw_cursor(&mut self, Coordinate { x, y, .. }: Coordinate) {
         self.buf.row_mut(usize::from(y))[usize::from(x)].is_reverse = true;
     }
@@ -153,14 +101,14 @@ impl<W: Write> Screen<W> {
     }
 
     /// Push the contents of the internal buffer to the screen.
-    pub fn refresh(&mut self) -> io::Result<()> {
+    pub fn refresh(&mut self, styles: &Styles) -> io::Result<()> {
         debug!("refreshing screen contents");
 
-        if let Some(fg) = &self.text_color.0 {
+        if let Some(fg) = &styles.fg {
             write!(self.out, "{}", Fg(Rgb(fg.r, fg.g, fg.b)))?;
         }
 
-        if let Some(bg) = &self.text_color.1 {
+        if let Some(bg) = &styles.bg {
             write!(self.out, "{}", Bg(Rgb(bg.r, bg.g, bg.b)))?;
         }
 
@@ -181,8 +129,8 @@ impl<W: Write> Screen<W> {
             let mut underline_spans = 0u32;
 
             for cell in row {
-                let starting_style = cell.span_start.map(|id| self.style(id).clone());
-                let ending_style = cell.span_end.map(|id| self.style(id).clone());
+                let starting_style: Option<&Style> = cell.span_start.map(|id| &styles[id]);
+                let ending_style: Option<&Style> = cell.span_end.map(|id| &styles[id]);
 
                 if let Some(style) = &starting_style {
                     if let Some(fg) = &style.fg {
@@ -321,7 +269,8 @@ mod tests {
         style::{Bold, Invert, Italic, NoFaint, NoInvert, NoItalic, NoUnderline, Underline},
     };
 
-    use super::{Color, Coordinate, Screen, Style};
+    use super::{Color, Coordinate, Screen};
+    use crate::editor::styles::{Style, Styles};
 
     #[test]
     fn write_str() {
@@ -345,19 +294,21 @@ mod tests {
 
     #[test]
     fn simple_span() {
-        let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(Size2D::new(15, 1), buf).unwrap();
-
-        screen.write_str(Coordinate::new(0, 0), "Hello, world!");
-        screen.define_style(
+        let mut styles = Styles::new();
+        styles.define(
             1,
             Style {
                 bold: true,
                 ..Default::default()
             },
         );
+
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(Size2D::new(15, 1), buf).unwrap();
+
+        screen.write_str(Coordinate::new(0, 0), "Hello, world!");
         screen.apply_style(Coordinate::new(0, 0), 1, 5);
-        screen.refresh().unwrap();
+        screen.refresh(&styles).unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
         assert_eq!(
@@ -374,27 +325,29 @@ mod tests {
 
     #[test]
     fn end_to_end_spans() {
-        let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(Size2D::new(15, 1), buf).unwrap();
-
-        screen.write_str(Coordinate::new(0, 0), "bolditalic");
-        screen.define_style(
+        let mut styles = Styles::new();
+        styles.define(
             1,
             Style {
                 bold: true,
                 ..Default::default()
             },
         );
-        screen.define_style(
+        styles.define(
             2,
             Style {
                 italic: true,
                 ..Default::default()
             },
         );
+
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(Size2D::new(15, 1), buf).unwrap();
+
+        screen.write_str(Coordinate::new(0, 0), "bolditalic");
         screen.apply_style(Coordinate::new(0, 0), 1, 4);
         screen.apply_style(Coordinate::new(4, 0), 2, 6);
-        screen.refresh().unwrap();
+        screen.refresh(&styles).unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
         assert_eq!(
@@ -413,35 +366,37 @@ mod tests {
 
     #[test]
     fn disjoint_spans() {
-        let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(Size2D::new(15, 1), buf).unwrap();
-
-        screen.write_str(Coordinate::new(0, 0), "int main() {}");
-        screen.define_style(
+        let mut styles = Styles::new();
+        styles.define(
             2,
             Style {
                 bold: true,
                 ..Default::default()
             },
         );
-        screen.define_style(
+        styles.define(
             3,
             Style {
                 bold: false,
                 ..Default::default()
             },
         );
-        screen.define_style(
+        styles.define(
             4,
             Style {
                 bold: true,
                 ..Default::default()
             },
         );
+
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(Size2D::new(15, 1), buf).unwrap();
+
+        screen.write_str(Coordinate::new(0, 0), "int main() {}");
         screen.apply_style(Coordinate::new(0, 0), 2, 3);
         screen.apply_style(Coordinate::new(3, 0), 3, 1);
         screen.apply_style(Coordinate::new(4, 0), 4, 4);
-        screen.refresh().unwrap();
+        screen.refresh(&styles).unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
         assert_eq!(
@@ -460,26 +415,22 @@ mod tests {
 
     #[test]
     fn span_out_of_bounds() {
-        let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(Size2D::new(10, 3), buf).unwrap();
-        screen.write_str(Coordinate::new(0, 0).into(), "foobarbaz");
-        screen.write_str(Coordinate::new(0, 1).into(), "quux quux");
-        screen.write_str(Coordinate::new(0, 2).into(), "xyzzyxyzzy");
-        screen.define_style(
+        let mut styles = Styles::new();
+        styles.define(
             2,
             Style {
                 bold: true,
                 ..Default::default()
             },
         );
-        screen.define_style(
+        styles.define(
             3,
             Style {
                 italic: true,
                 ..Default::default()
             },
         );
-        screen.define_style(
+        styles.define(
             4,
             Style {
                 underline: true,
@@ -487,10 +438,15 @@ mod tests {
             },
         );
 
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(Size2D::new(10, 3), buf).unwrap();
+        screen.write_str(Coordinate::new(0, 0).into(), "foobarbaz");
+        screen.write_str(Coordinate::new(0, 1).into(), "quux quux");
+        screen.write_str(Coordinate::new(0, 2).into(), "xyzzyxyzzy");
         screen.apply_style(Coordinate::new(0, 0), 2, 20);
         screen.apply_style(Coordinate::new(5, 1), 3, 10);
         screen.apply_style(Coordinate::new(20, 2), 4, 5);
-        screen.refresh().unwrap();
+        screen.refresh(&styles).unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
         assert_eq!(
@@ -515,35 +471,37 @@ mod tests {
 
     #[test]
     fn color_change() {
-        let buf = Cursor::new(vec![]);
-        let mut screen = Screen::new_from_write(Size2D::new(15, 1), buf).unwrap();
-
-        screen.write_str(Coordinate::new(0, 0), "redgreenblue");
-        screen.define_style(
+        let mut styles = Styles::new();
+        styles.define(
             2,
             Style {
                 fg: Some(Color { r: 255, g: 0, b: 0 }),
                 ..Default::default()
             },
         );
-        screen.define_style(
+        styles.define(
             3,
             Style {
                 fg: Some(Color { r: 0, g: 255, b: 0 }),
                 ..Default::default()
             },
         );
-        screen.define_style(
+        styles.define(
             4,
             Style {
                 fg: Some(Color { r: 0, g: 0, b: 255 }),
                 ..Default::default()
             },
         );
+
+        let buf = Cursor::new(vec![]);
+        let mut screen = Screen::new_from_write(Size2D::new(15, 1), buf).unwrap();
+
+        screen.write_str(Coordinate::new(0, 0), "redgreenblue");
         screen.apply_style(Coordinate::new(0, 0), 2, 3);
         screen.apply_style(Coordinate::new(3, 0), 3, 5);
         screen.apply_style(Coordinate::new(8, 0), 4, 4);
-        screen.refresh().unwrap();
+        screen.refresh(&styles).unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
         assert_eq!(
@@ -564,9 +522,9 @@ mod tests {
     fn styles() {
         let buf = Cursor::new(vec![]);
         let mut screen = Screen::new_from_write(Size2D::new(4, 1), buf).unwrap();
+        let mut styles = Styles::new();
 
-        screen.write_str(Coordinate::new(0, 0), "foo");
-        screen.define_style(
+        styles.define(
             2,
             Style {
                 bold: true,
@@ -575,9 +533,11 @@ mod tests {
                 ..Default::default()
             },
         );
+
+        screen.write_str(Coordinate::new(0, 0), "foo");
         screen.apply_style(Coordinate::new(0, 0), 2, 3);
         screen.draw_cursor(Coordinate::new(1, 0));
-        screen.refresh().unwrap();
+        screen.refresh(&styles).unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
         assert_eq!(
@@ -600,14 +560,15 @@ mod tests {
 
     #[test]
     fn refresh() {
+        let styles = Styles::new();
         let buf = Cursor::new(vec![]);
         let mut screen = Screen::new_from_write(Size2D::new(4, 1), buf).unwrap();
 
         screen.write_str(Coordinate::new(0, 0), "foo");
-        screen.refresh().unwrap();
+        screen.refresh(&styles).unwrap();
 
         screen.write_str(Coordinate::new(0, 0), "foo");
-        screen.refresh().unwrap();
+        screen.refresh(&styles).unwrap();
 
         let sequences = String::from_utf8(screen.out.into_inner()).unwrap();
         assert_eq!(
