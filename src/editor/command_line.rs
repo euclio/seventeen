@@ -1,6 +1,6 @@
 use euclid::Rect;
 
-use super::styles::Styles;
+use super::styles::{Style, Styles};
 use crate::screen::{Coordinate, Screen};
 
 #[derive(Debug, Default)]
@@ -34,6 +34,15 @@ impl CommandLine {
             x: bounds.origin.x + line.chars().count(),
             ..bounds.origin
         });
-        screen.refresh(&styles).unwrap();
+        screen.apply_style(
+            bounds.origin,
+            line.chars().count(),
+            &Style {
+                fg: styles.fg,
+                bg: styles.bg,
+                ..Default::default()
+            },
+        );
+        screen.refresh().unwrap();
     }
 }

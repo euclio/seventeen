@@ -4,6 +4,7 @@ use euclid::{Rect, SideOffsets2D};
 use log::*;
 
 use super::line_cache::LineCache;
+use super::styles::Styles;
 use crate::screen::{Coordinate, Screen};
 
 #[derive(Debug)]
@@ -25,7 +26,12 @@ impl Window {
         }
     }
 
-    pub fn render<W: Write>(&self, bounds: &Rect<usize>, screen: &mut Screen<W>) -> io::Result<()> {
+    pub fn render<W: Write>(
+        &self,
+        styles: &Styles,
+        bounds: &Rect<usize>,
+        screen: &mut Screen<W>,
+    ) -> io::Result<()> {
         let start = self.offsets.top;
         let end = start + bounds.size.height;
 
@@ -72,8 +78,8 @@ impl Window {
 
                 screen.apply_style(
                     Coordinate::new(style_span.start, i),
-                    style_span.id,
                     style_span.length,
+                    &styles[style_span.id],
                 );
             }
 
@@ -141,10 +147,12 @@ mod test {
     use euclid::{Rect, Size2D};
 
     use super::{LineCache, Screen, Window};
+    use crate::editor::styles::Styles;
     use crate::screen::Coordinate;
 
     #[test]
     fn cache_smaller_than_window() {
+        let styles = Styles::new();
         let bounds = Rect::from_size(Size2D::new(5, 5));
         let mut window = Window::new();
         window.line_cache = LineCache::new_from_lines(&["foo", "bar"]);
@@ -152,11 +160,12 @@ mod test {
         let buf = Cursor::new(vec![]);
         let mut screen = Screen::new_from_write(bounds.size, buf).unwrap();
 
-        window.render(&bounds, &mut screen).unwrap();
+        window.render(&styles, &bounds, &mut screen).unwrap();
     }
 
     #[test]
     fn window_smaller_than_cache() {
+        let styles = Styles::new();
         let bounds = Rect::from_size(Size2D::new(5, 1));
         let mut window = Window::new();
         window.line_cache = LineCache::new_from_lines(&["hello, world!", "goodbye, world!"]);
@@ -164,7 +173,7 @@ mod test {
         let buf = Cursor::new(vec![]);
         let mut screen = Screen::new_from_write(bounds.size, buf).unwrap();
 
-        window.render(&bounds, &mut screen).unwrap();
+        window.render(&styles, &bounds, &mut screen).unwrap();
     }
 
     #[test]

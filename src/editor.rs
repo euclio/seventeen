@@ -95,9 +95,13 @@ impl Editor {
         let window = self.windows.get_mut(&view_id).unwrap();
         window.line_cache.update(update);
         window
-            .render(&self.layout.of_view(&view_id), &mut self.screen)
+            .render(
+                &self.styles,
+                &self.layout.of_view(&view_id),
+                &mut self.screen,
+            )
             .unwrap();
-        self.screen.refresh(&self.styles).unwrap();
+        self.screen.refresh().unwrap();
     }
 
     fn scroll_to(&mut self, view_id: ViewId, line: usize, col: usize) {
@@ -105,8 +109,10 @@ impl Editor {
         let bounds = self.layout.of_view(&view_id);
 
         window.scroll_to(&bounds, Coordinate::new(col, line));
-        window.render(&bounds, &mut self.screen).unwrap();
-        self.screen.refresh(&self.styles).unwrap();
+        window
+            .render(&self.styles, &bounds, &mut self.screen)
+            .unwrap();
+        self.screen.refresh().unwrap();
     }
 
     fn config_changed(&mut self, changes: ConfigChanges) {
@@ -299,7 +305,7 @@ impl Editor {
 
                         self.screen
                             .erase_line(self.layout.of_command_line().origin.y);
-                        self.screen.refresh(&self.styles).unwrap();
+                        self.screen.refresh().unwrap();
                         info!("entering normal mode");
                         self.mode = Mode::Normal;
                     }

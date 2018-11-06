@@ -4,7 +4,7 @@ use termion::color::Rgb;
 
 use crate::protocol;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct Color {
     pub r: u8,
     pub g: u8,
